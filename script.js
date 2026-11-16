@@ -34,9 +34,9 @@ const KEYS = {
 };
 
 const COURSES = [
-  'BS Agribusiness Economics', 'BA Anthropology', 'BS Applied Mathematics', 'BS Architecture', 
+  'BS Agribusiness Economics', 'BA Anthropology', 'BA English', 'BS Applied Mathematics', 'BS Architecture', 
   'BS Biology', 'BA Communication and Media Arts', 'BS Computer Science', 'BS Data Science', 
-  'BS Food Technology', 'AA Sport Science', 'BS Sport Science'   
+  'BS Food Technology', 'AA Sport Science', 'B Sport Science'   
 ];
 
 const INTERESTS = [
@@ -67,6 +67,186 @@ const EDITABLE_STATUSES = ['Draft'];
 const TIMELINE_STEPS = [
   'Application Submitted', 'Under Review', 'Approved', 'Disbursement Processing', 'Funds Released'
 ];
+
+
+/* =====================================================================
+   2. SAMPLE SCHOLARSHIP DATA  (FICTIONAL - for demonstration only)
+   Deadlines are calculated from today's date so the demo always has
+   some open and some closing-soon scholarships.
+   ===================================================================== */
+
+function getSampleScholarships() {
+  return [
+    {
+      id: 1, isSample: true,
+      name: 'Sample Academic Excellence Grant',
+      provider: 'Demo University Foundation',
+      type: 'University',
+      description: 'A demonstration merit grant for students with a high general weighted average.',
+      courses: ['Any'],
+      yearLevels: [2, 3, 4, 5],
+      maxGWA: 1.75,
+      maxIncome: null,
+      fields: ['Any'],
+      allowsExistingAid: true,
+      benefits: 'PHP 15,000 grant per semester',
+      benefitAmount: 15000,
+      documents: ['Certified copy of grades', 'Photocopy of school ID', 'Letter of intent'],
+      deadline: dateInDays(21),
+      instructions: 'Sample instructions: complete the in-app form, upload each required document, then submit.',
+      link: '',
+      compliance: ['Maintain a GWA of 1.75 or better', 'Enroll in a full load each semester'],
+      renewal: 'Renews each semester after submission of updated grades and a short progress letter.'
+    },
+    {
+      id: 2, isSample: true,
+      name: 'Sample Science & Math Scholars Scholarship',
+      provider: 'Demo Science Foundation',
+      type: 'Private',
+      description: 'A demonstration scholarship for science, mathematics and computing students from lower-income households.',
+      courses: ['BS Applied Mathematics', 'BS Biology', 'BS Computer Science', 'BS Food Technology'],
+      yearLevels: [2, 3, 4, 5],
+      maxGWA: 2.0,
+      maxIncome: 40000,
+      fields: ['Science & Mathematics', 'Technology & Computing'],
+      allowsExistingAid: false,
+      benefits: 'PHP 20,000 per semester plus PHP 5,000 book allowance',
+      benefitAmount: 25000,
+      documents: ['Certified copy of grades', 'Proof of family income', 'Photocopy of school ID', 'Recommendation letter'],
+      deadline: dateInDays(14),
+      instructions: 'Sample instructions: prepare the four documents listed, fill out the form, and submit before the deadline.',
+      link: 'https://example.com/sample-science-scholarship',
+      compliance: ['Maintain a GWA of 2.00 or better', 'Submit grades within 2 weeks after each semester', 'No failing or dropped subjects'],
+      renewal: 'Renewable every academic year if compliance requirements are met.'
+    },
+    {
+      id: 3, isSample: true,
+      name: 'Sample Tuition Support Program',
+      provider: 'Demo Government Agency',
+      type: 'Government',
+      description: 'A demonstration tuition support program for students from low-income households.',
+      courses: ['Any'],
+      yearLevels: [1, 2, 3, 4, 5],
+      maxGWA: 2.5,
+      maxIncome: 20000,
+      fields: ['Any'],
+      allowsExistingAid: false,
+      benefits: 'PHP 20,000 tuition support per semester',
+      benefitAmount: 20000,
+      documents: ['Proof of family income', 'Certificate of enrollment', 'Barangay certificate', 'Photocopy of school ID'],
+      deadline: dateInDays(30),
+      instructions: 'Sample instructions: submit the form together with all four documents.',
+      link: 'https://example.com/sample-tuition-support',
+      compliance: ['Maintain a GWA of 2.50 or better', 'Submit certificate of enrollment each semester'],
+      renewal: 'Renews yearly after income re-validation.'
+    },
+    {
+      id: 4, isSample: true,
+      name: 'Sample Tech Futures Scholarship',
+      provider: 'Demo Tech Industry Council',
+      type: 'Private',
+      description: 'A demonstration scholarship for upper-year computing and mathematics students.',
+      courses: ['BS Computer Science', 'BS Applied Mathematics'],
+      yearLevels: [3, 4],
+      maxGWA: 2.25,
+      maxIncome: null,
+      fields: ['Technology & Computing', 'Science & Mathematics'],
+      allowsExistingAid: true,
+      benefits: 'PHP 25,000 per semester plus internship opportunity (sample)',
+      benefitAmount: 25000,
+      documents: ['Certified copy of grades', 'Resume', 'Short project portfolio'],
+      deadline: dateInDays(9),
+      instructions: 'Sample instructions: include a short portfolio of a class or personal project.',
+      link: '',
+      compliance: ['Maintain a GWA of 2.25 or better', 'Attend two sample mentoring sessions per semester'],
+      renewal: 'Renews each semester with a progress report.'
+    },
+    {
+      id: 5, isSample: true,
+      name: 'Sample Alumni Book Allowance',
+      provider: 'Demo Alumni Association',
+      type: 'Alumni',
+      description: 'A small demonstration allowance for textbooks and learning materials.',
+      courses: ['Any'],
+      yearLevels: [1, 2, 3, 4, 5],
+      maxGWA: null,
+      maxIncome: 30000,
+      fields: ['Any'],
+      allowsExistingAid: true,
+      benefits: 'PHP 5,000 one-time book allowance',
+      benefitAmount: 5000,
+      documents: ['Photocopy of school ID', 'Proof of family income'],
+      deadline: dateInDays(4),
+      instructions: 'Sample instructions: two documents only. Closing soon!',
+      link: '',
+      compliance: ['Submit receipts for purchased books within 30 days'],
+      renewal: 'One-time grant. Not renewable.'
+    },
+    {
+      id: 6, isSample: true,
+      name: 'Sample Future Managers Award',
+      provider: 'Demo Business Circle',
+      type: 'Private',
+      description: 'A demonstration award for management and economics students who show leadership.',
+      courses: ['BS Management Economics'],
+      yearLevels: [3, 4, 5],
+      maxGWA: 2.0,
+      maxIncome: null,
+      fields: ['Management & Economics'],
+      allowsExistingAid: true,
+      benefits: 'PHP 12,000 per semester',
+      benefitAmount: 12000,
+      documents: ['Certified copy of grades', 'Leadership essay', 'Certificate of good moral character'],
+      deadline: dateInDays(45),
+      instructions: 'Sample instructions: write a one-page leadership essay and attach it to your submission.',
+      link: 'https://example.com/sample-managers-award',
+      compliance: ['Maintain a GWA of 2.00 or better', 'Complete 20 hours of sample community service'],
+      renewal: 'Renewable once with a service report.'
+    },
+    {
+      id: 7, isSample: true,
+      name: 'Sample Community Service Leaders Grant',
+      provider: 'Demo University Foundation',
+      type: 'University',
+      description: 'A demonstration grant for students active in community service and campus organizations.',
+      courses: ['Any'],
+      yearLevels: [2, 3, 4, 5],
+      maxGWA: 2.5,
+      maxIncome: null,
+      fields: ['Social Sciences', 'Arts & Humanities', 'Management & Economics'],
+      allowsExistingAid: true,
+      benefits: 'PHP 8,000 per semester',
+      benefitAmount: 8000,
+      documents: ['Certified copy of grades', 'Certificate of community service', 'Photocopy of school ID'],
+      deadline: dateInDays(7),
+      instructions: 'Sample instructions: attach proof of at least 40 hours of community service.',
+      link: '',
+      compliance: ['Maintain a GWA of 2.50 or better', 'Submit a semestral service report'],
+      renewal: 'Renews each semester after a service report.'
+    },
+    {
+      id: 8, isSample: true,
+      name: 'Sample Freshman Access Aid (Closed)',
+      provider: 'Demo Government Agency',
+      type: 'Government',
+      description: 'A demonstration aid for incoming first-year students. Its deadline has already passed so you can see how closed listings look.',
+      courses: ['Any'],
+      yearLevels: [1],
+      maxGWA: null,
+      maxIncome: 25000,
+      fields: ['Any'],
+      allowsExistingAid: false,
+      benefits: 'PHP 10,000 one-time grant',
+      benefitAmount: 10000,
+      documents: ['Proof of family income', 'Certificate of admission'],
+      deadline: dateInDays(-5),
+      instructions: 'Sample instructions: this listing is closed.',
+      link: '',
+      compliance: ['Enroll full-time for the first semester'],
+      renewal: 'One-time grant. Not renewable.'
+    }
+  ];
+}
 
 
 /* =====================================================================
@@ -308,7 +488,7 @@ function readProfileForm() {
   if (gwaText === '' || isNaN(gwa) || gwa < 1 || gwa > 5) errors.push('GWA must be a number from 1.00 to 5.00.');
   if (incomeText === '' || isNaN(income) || income < 0) errors.push('Monthly family income must be a number (0 or higher).');
   if (!aid) errors.push('Please select your scholarship / financial assistance status.');
-  if (!interest) errors.push('Please select your field of study or academic interest.');
+  if (!interest) errors.push('Please select your college.');
 
   return {
     ok: errors.length === 0,
@@ -389,8 +569,7 @@ function renderMatchingResults() {
       const closed = isClosed(s);
 
       html += '<div class="card">';
-      html += '<div class="badges">' + levelBadge + '<span class="badge badge-gray">' + m.result.score + '% of requirements met</span>' +
-        '<span class="badge badge-sample">Sample data</span></div>';
+      html += '<div class="badges">' + levelBadge + '<span class="badge badge-gray">' + m.result.score + '% of requirements met</span>' + '</div>';
       html += '<h4 class="sch-title">' + esc(s.name) + '</h4>';
       html += '<div class="sch-provider">' + esc(s.provider) + '</div>';
       html += '<p>Deadline: <strong>' + formatDate(s.deadline) + '</strong> ' + deadlineBadge(s.deadline) + '</p>';
@@ -460,7 +639,7 @@ function renderMarketplace() {
 
   $('market-list').innerHTML = list.map(function (s) {
     return '<div class="card">' +
-      '<div class="badges"><span class="badge badge-gray">' + esc(s.type) + '</div>' +
+      '<div class="badges"><span class="badge badge-gray">' + esc(s.type) + '</span></div>' +
       '<h4 class="sch-title">' + esc(s.name) + '</h4>' +
       '<div class="sch-provider">' + esc(s.provider) + '</div>' +
       '<p class="sch-desc">' + esc(s.description) + '</p>' +
@@ -1426,7 +1605,7 @@ function validateScholarship(f) {
   if (!f.description) errors.push('Description is required.');
   if (f.courses.length === 0) errors.push('Select at least one eligible program (or "Any program").');
   if (f.yearLevels.length === 0) errors.push('Select at least one eligible year level.');
-  if (f.fields.length === 0) errors.push('Select at least one field of study (or "Any field").');
+  if (f.fields.length === 0) errors.push('Select at least one college (or "Any").');
 
   if (f.gwaText !== '') {
     const g = Number(f.gwaText);
@@ -1571,12 +1750,19 @@ const HEADING_RE = /^(description|about( the (scholarship|program))?|overview|ba
 const YEAR_WORDS = { first: 1, '1st': 1, second: 2, '2nd': 2, third: 3, '3rd': 3, fourth: 4, '4th': 4, fifth: 5, '5th': 5 };
 const MONTHS = { january: 1, jan: 1, february: 2, feb: 2, march: 3, mar: 3, april: 4, apr: 4, may: 5, june: 6, jun: 6, july: 7, jul: 7,
   august: 8, aug: 8, september: 9, sept: 9, sep: 9, october: 10, oct: 10, november: 11, nov: 11, december: 12, dec: 12 };
-const COURSE_WORDS = {
-  'BS Applied Mathematics': /applied math/i, 'BS Architecture': /architecture/i, 'BS Biology': /biology/i,
-  'BS Computer Science': /computer science|\bBSCS\b/i, 'BS Food Technology': /food tech/i,
-  'BS Management Economics': /management economics/i, 'BA Anthropology': /anthropology/i,
-  'BA Communication Arts': /communication arts/i
-};
+// Built from the COURSES list above, so changing COURSES also updates PDF extraction.
+// A course is matched by its name without the degree prefix (e.g. "Data Science").
+// Ambiguous names ("English") and names shared by two degrees (the two Sport Science degrees) must appear WITH their prefix, e.g. "BA English".
+function courseRegex(course) {
+  const esc2 = function (t) { return t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); };
+  const plain = course.replace(/^(BS|BA|AA|B|AB)\s+/, '');
+  const shared = COURSES.filter(function (c) { return c.replace(/^(BS|BA|AA|B|AB)\s+/, '') === plain; }).length > 1;
+  if (shared || /^English$/i.test(plain)) return new RegExp('\\b' + esc2(course).replace(/\s+/g, '\\s+') + '\\b', 'i');
+  let re = esc2(plain).replace(/\s+/g, '\\s+').replace(/\band\b/gi, '(?:and|&)');
+  if (/Computer Science/i.test(plain)) re += '|\\bBSCS\\b';
+  if (/Communication and Media Arts/i.test(plain)) re += '|communication\\s+arts';
+  return new RegExp(re, 'i');
+}
 
 function isHeading(l) {
   if (!l || l.length > 90) return false;
@@ -1694,7 +1880,7 @@ function extractScholarshipInfo(lines) {
   // Eligibility details (use the eligibility section when there is one)
   const src = elig.length ? elig : lines;
   const srcText = src.join(' ');
-  r.courses = Object.keys(COURSE_WORDS).filter(function (c) { return COURSE_WORDS[c].test(srcText); });
+  r.courses = COURSES.filter(function (c) { return courseRegex(c).test(srcText); });
   if (r.courses.length === 0 && /all (?:degree )?(?:courses|programs|degrees)|any (?:degree )?(?:course|program)/i.test(srcText)) r.courses = ['Any'];
   let yearSrc = src.filter(function (l) { return /\b(year|yr)\b/i.test(l); }).join(' ');
   if (!yearSrc && elig.length) yearSrc = lines.filter(function (l) { return /\b(year|yr)\b/i.test(l); }).join(' ');
@@ -1847,7 +2033,7 @@ function showReviewNote(r) {
       r.benefits, r.amount, r.documents.length, r.deadline, r.instructions, r.link].filter(function (x) { return x; }).length;
     html = '<strong>Please review before publishing.</strong> The app filled in ' + found + ' of 15 details it could identify from the PDF. ' +
       'Automatic reading can make mistakes, so <strong>verify every field against the original PDF</strong> (view it below). ' +
-      'Blank fields were not found. Field of study, compliance and renewal are never filled in automatically. ' +
+      'Blank fields were not found. College, compliance and renewal are never filled in automatically. ' +
       'The scholarship is <strong>not published</strong> until you click "Publish Scholarship".' +
       (r.notes.length ? '<ul>' + r.notes.map(function (n) { return '<li>' + esc(n) + '</li>'; }).join('') + '</ul>' : '');
   }
