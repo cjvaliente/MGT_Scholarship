@@ -796,7 +796,7 @@ function readProfileForm() {
   if (gwaText === '' || isNaN(gwa) || gwa < 1 || gwa > 5) errors.push('GWA must be a number from 1.00 to 5.00.');
   if (incomeText === '' || isNaN(income) || income < 0) errors.push('Monthly family income must be a number (0 or higher).');
   if (!aid) errors.push('Please select your scholarship / financial assistance status.');
-  if (!interest) errors.push('Please select your field of study or academic interest.');
+  if (!interest) errors.push('Please select your College.');
 
   return {
     ok: errors.length === 0,
@@ -1267,7 +1267,7 @@ function validateAppForm(f, strict) {
     if (!f.yearLevel) errors.push('Year level is required.');
     if (f.gwaText === '' || isNaN(gwa) || gwa < 1 || gwa > 5) errors.push('GWA must be a number from 1.00 to 5.00.');
     if (f.incomeText === '' || isNaN(income) || income < 0) errors.push('Monthly family income must be a number (0 or higher).');
-    if (!f.statement) errors.push('Please explain why you are applying.');
+    
   }
   return errors;
 }
@@ -2163,7 +2163,6 @@ function validateScholarship(f, publish) {
 
   if (publish) {
     if (!f.type) errors.push('Please select a scholarship type.');
-    if (!f.description) errors.push('Description is required.');
     if (f.courses.length === 0) errors.push('Select at least one eligible program (or "Any program").');
     if (f.yearLevels.length === 0) errors.push('Select at least one eligible year level.');
     if (f.fields.length === 0) errors.push('Select at least one field of study (or "Any field").');
@@ -2172,7 +2171,6 @@ function validateScholarship(f, publish) {
     if (f.amountText === '' || isNaN(amount) || amount < 0) errors.push('Amount per release must be a number (0 or higher).');
     if (f.documents.length === 0) errors.push('List at least one required document (one per line).');
     if (!f.instructions) errors.push('Application instructions are required.');
-    if (!f.deadline) errors.push('Application deadline is required.');
     else if (editingScholarshipId === null && daysUntil(f.deadline) < 0) errors.push('The deadline of a new scholarship cannot be in the past.');
   }
   if (f.gwaText !== '') {
@@ -2653,7 +2651,7 @@ async function startApp() {
   });
 
   $('storage-note').textContent = sb
-    ? 'Shared cloud database (Supabase) is connected. All users see the same data.'
+    ? ''
     : 'LOCAL DEMO MODE: no cloud database is configured, so data is stored only in this browser and is NOT shared with other users. See README.';
   $('storage-note').classList.toggle('local', !sb);
 
