@@ -805,9 +805,6 @@ body.logged-out .app { display: none; }
   font-weight: 600;
 }
 
-/* =====================================================================
-   Reduced motion: keep fades, remove movement and scaling
-   ===================================================================== */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 1ms !important;
