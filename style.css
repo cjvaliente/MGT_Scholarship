@@ -816,3 +816,11 @@ body.logged-out .app { display: none; }
   }
   .btn:active:not(:disabled), .quick-btn:active, .nav-btn:active, .role-card:active { transform: none; }
 }
+
+.logo-upload { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.logo-preview { width: 64px; height: 64px; object-fit: contain; background: #fff;
+  border: 1px solid #d0d7e2; border-radius: 8px; padding: 4px; }
+.sch-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.sch-head h3, .sch-head h4 { margin: 0; }
+.sch-logo { display: block; width: 48px; height: 48px; object-fit: contain; background: #fff;
+  border-radius: 8px; padding: 3px; flex-shrink: 0; }
