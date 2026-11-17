@@ -31,12 +31,12 @@
         <div class="field">
           <label for="login-email">UP Mail address *</label>
           <input type="email" id="login-email" autocomplete="off" placeholder="name@up.edu.ph">
-          <small class="muted">Use your UP Mail address (ends with @up.edu.ph). No password is needed for students.</small>
+          <small class="muted">Use your upmail</small>
         </div>
         <div class="field hidden" id="login-admin-fields">
-          <label for="login-pass">Staff passcode *</label>
+          <label for="login-pass">Password *</label>
           <input type="password" id="login-pass" autocomplete="off">
-          <small class="muted">Demo passcode: <strong>admin123</strong></small>
+          <small class="muted">Password: <strong>admin123</strong></small>
         </div>
         <button type="submit" id="login-btn" class="btn btn-gold btn-block login-btn">Sign In</button>
       </form>
@@ -62,7 +62,7 @@
       </form>
     </div>
 
-    <p class="small-note dark">Prototype notice: this sign-in is a demonstration only and is not secure. It does not connect to Google or UP Mail. Never enter a real password here.</p>
+    <p class="small-note dark">Notice: this sign-in is a demonstration only and is not secure. It does not connect to Google or UP Mail.</p>
     <p class="small-note dark storage-note" id="storage-note"></p>
   </div>
 </div>
@@ -165,11 +165,11 @@
                   <select id="sch-type"></select>
                 </div>
                 <div class="field">
-                  <label for="sch-deadline">Application deadline *</label>
+                  <label for="sch-deadline">Application deadline</label>
                   <input type="date" id="sch-deadline">
                 </div>
                 <div class="field full">
-                  <label for="sch-desc">Description *</label>
+                  <label for="sch-desc">Description</label>
                   <textarea id="sch-desc" rows="3"></textarea>
                 </div>
 
@@ -182,7 +182,7 @@
                   <div class="docs-box check-grid" id="sch-years"></div>
                 </div>
                 <div class="field full">
-                  <label>Field of study / focus *</label>
+                  <label>College: *</label>
                   <div class="docs-box check-grid" id="sch-fields"></div>
                 </div>
 
@@ -199,8 +199,8 @@
                 </div>
 
                 <div class="field">
-                  <label for="sch-benefits">Benefits (text shown to students) *</label>
-                  <input type="text" id="sch-benefits" placeholder="e.g., PHP 15,000 per semester">
+                  <label for="sch-benefits">Benefits *</label>
+                  <textarea id="sch-benefits" rows="4" placeholder="e.g., PHP 15,000 per semester"></textarea>
                 </div>
                 <div class="field">
                   <label for="sch-amount">Amount per release (PHP) *</label>
@@ -319,7 +319,7 @@
                 <select id="p-aid"></select>
               </div>
               <div class="field full">
-                <label for="p-interest">Field of study or academic interest *</label>
+                <label for="p-interest">College: *</label>
                 <select id="p-interest"></select>
               </div>
             </div>
@@ -426,7 +426,7 @@
                   <input type="number" id="af-income" min="0" step="100">
                 </div>
                 <div class="field full">
-                  <label for="af-statement">Why are you applying? *</label>
+                  <label for="af-statement">Why are you applying?</label>
                   <textarea id="af-statement" rows="4" placeholder="Briefly explain why you need and deserve this scholarship."></textarea>
                 </div>
                 <div class="field full">
