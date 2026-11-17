@@ -1,7 +1,8 @@
 /* =====================================================================
    iSKOLEKTIB - script.js
-   A frontend prototype. All data lives in the browser's localStorage.
-   Nothing is ever sent to a server, a university, or a scholarship provider.
+   An MVP prototype. Data (users, scholarships, applications and uploaded files) is kept in a
+   SHARED Supabase database when config.js is filled in (otherwise in this browser only).
+   Nothing is ever sent to a university, a scholarship provider, or a government agency.
 
    HOW THIS FILE IS ORGANIZED
      1. Settings and lists (courses, statuses, ...)
@@ -14,8 +15,6 @@
      8. Dashboard
      8B. Sign-in, roles and admin scholarship management
      9. Navigation, modal, messages
-     5B. File storage (IndexedDB) and upload helpers
-     8C. Admin: PDF extraction and student application review
     10. Click / change listeners and start-up
    ===================================================================== */
 
@@ -25,18 +24,13 @@
    Edit these lists to change what appears in the dropdown menus.
    ===================================================================== */
 
-// Names of the keys used inside localStorage
-const KEYS = {
-  scholarships: 'iskolektib_scholarships',
-  profile: 'iskolektib_profile',
-  applications: 'iskolektib_applications',
-  session: 'iskolektib_session'
-};
+// Key used to remember who is signed in (the data itself lives in the shared database)
+const KEYS = { session: 'iskolektib_session' };
 
 const COURSES = [
   'BS Agribusiness Economics', 'BA Anthropology', 'BA English', 'BS Applied Mathematics', 'BS Architecture', 
   'BS Biology', 'BA Communication and Media Arts', 'BS Computer Science', 'BS Data Science', 
-  'BS Food Technology', 'AA Sport Science', 'B Sport Science'   
+  'BS Food Technology', 'AA Sport Science', 'B Sport Science'
 ];
 
 const INTERESTS = [
@@ -60,9 +54,8 @@ const APP_STATUSES = [
 
 const DISB_STATUSES = ['Not Yet Approved', 'Pending', 'Processing', 'Released', 'Delayed'];
 
-// Students can only edit an application while it is a Draft.
-// Once submitted it is LOCKED, whatever status the admin sets later.
-const EDITABLE_STATUSES = ['Draft'];
+// An application can only be edited while it is in one of these statuses
+const EDITABLE_STATUSES = ['Draft'];   // submitted applications are locked
 
 const TIMELINE_STEPS = [
   'Application Submitted', 'Under Review', 'Approved', 'Disbursement Processing', 'Funds Released'
@@ -75,175 +68,363 @@ const TIMELINE_STEPS = [
    some open and some closing-soon scholarships.
    ===================================================================== */
 
+// Real UP Mindanao scholarship list (replaces the old sample records).
+// Deadlines are fixed ISO dates (YYYY-MM-DD). Where the source list gave no
+// deadline, 2026-12-12 is used as a placeholder.
+// Fields the source list did not state are left empty / null on purpose
+// (maxGWA, maxIncome, compliance, renewal) rather than guessed.
+// Monthly stipends are converted to a per-semester figure using 5 months per
+// semester, the same basis the source list uses for Plate UP and Live UP.
+// Records with published:false have no details in the source list yet.
 function getSampleScholarships() {
   return [
     {
-      id: 1, isSample: true,
-      name: 'Sample Academic Excellence Grant',
-      provider: 'Demo University Foundation',
-      type: 'University',
-      description: 'A demonstration merit grant for students with a high general weighted average.',
-      courses: ['Any'],
-      yearLevels: [2, 3, 4, 5],
-      maxGWA: 1.75,
-      maxIncome: null,
-      fields: ['Any'],
-      allowsExistingAid: true,
-      benefits: 'PHP 15,000 grant per semester',
-      benefitAmount: 15000,
-      documents: ['Certified copy of grades', 'Photocopy of school ID', 'Letter of intent'],
-      deadline: dateInDays(21),
-      instructions: 'Sample instructions: complete the in-app form, upload each required document, then submit.',
-      link: '',
-      compliance: ['Maintain a GWA of 1.75 or better', 'Enroll in a full load each semester'],
-      renewal: 'Renews each semester after submission of updated grades and a short progress letter.'
-    },
-    {
-      id: 2, isSample: true,
-      name: 'Sample Science & Math Scholars Scholarship',
-      provider: 'Demo Science Foundation',
+      id: 1, isSample: false, published: true,
+      name: "Aboitiz Future Leaders' Scholarship",
+      provider: 'Aboitiz',
       type: 'Private',
-      description: 'A demonstration scholarship for science, mathematics and computing students from lower-income households.',
-      courses: ['BS Applied Mathematics', 'BS Biology', 'BS Computer Science', 'BS Food Technology'],
-      yearLevels: [2, 3, 4, 5],
+      description: 'Private scholarship for bona fide second-year undergraduate students of any degree program at UP Mindanao.',
+      courses: ['Any'],
+      yearLevels: [2],
       maxGWA: 2.0,
-      maxIncome: 40000,
-      fields: ['Science & Mathematics', 'Technology & Computing'],
-      allowsExistingAid: false,
-      benefits: 'PHP 20,000 per semester plus PHP 5,000 book allowance',
-      benefitAmount: 25000,
-      documents: ['Certified copy of grades', 'Proof of family income', 'Photocopy of school ID', 'Recommendation letter'],
-      deadline: dateInDays(14),
-      instructions: 'Sample instructions: prepare the four documents listed, fill out the form, and submit before the deadline.',
-      link: 'https://example.com/sample-science-scholarship',
-      compliance: ['Maintain a GWA of 2.00 or better', 'Submit grades within 2 weeks after each semester', 'No failing or dropped subjects'],
-      renewal: 'Renewable every academic year if compliance requirements are met.'
-    },
-    {
-      id: 3, isSample: true,
-      name: 'Sample Tuition Support Program',
-      provider: 'Demo Government Agency',
-      type: 'Government',
-      description: 'A demonstration tuition support program for students from low-income households.',
-      courses: ['Any'],
-      yearLevels: [1, 2, 3, 4, 5],
-      maxGWA: 2.5,
-      maxIncome: 20000,
+      maxIncome: 200000,
       fields: ['Any'],
       allowsExistingAid: false,
-      benefits: 'PHP 20,000 tuition support per semester',
-      benefitAmount: 20000,
-      documents: ['Proof of family income', 'Certificate of enrollment', 'Barangay certificate', 'Photocopy of school ID'],
-      deadline: dateInDays(30),
-      instructions: 'Sample instructions: submit the form together with all four documents.',
-      link: 'https://example.com/sample-tuition-support',
-      compliance: ['Maintain a GWA of 2.50 or better', 'Submit certificate of enrollment each semester'],
-      renewal: 'Renews yearly after income re-validation.'
-    },
-    {
-      id: 4, isSample: true,
-      name: 'Sample Tech Futures Scholarship',
-      provider: 'Demo Tech Industry Council',
-      type: 'Private',
-      description: 'A demonstration scholarship for upper-year computing and mathematics students.',
-      courses: ['BS Computer Science', 'BS Applied Mathematics'],
-      yearLevels: [3, 4],
-      maxGWA: 2.25,
-      maxIncome: null,
-      fields: ['Technology & Computing', 'Science & Mathematics'],
-      allowsExistingAid: true,
-      benefits: 'PHP 25,000 per semester plus internship opportunity (sample)',
-      benefitAmount: 25000,
-      documents: ['Certified copy of grades', 'Resume', 'Short project portfolio'],
-      deadline: dateInDays(9),
-      instructions: 'Sample instructions: include a short portfolio of a class or personal project.',
+      benefits: 'PHP 10,000 monthly allowance; one-time Academic Excellence Incentive (PHP 20,000 for college valedictorian or equivalent recognition, or reimbursement of the same value); Latin Honors Incentive (Summa Cum Laude PHP 10,000, Magna Cum Laude PHP 7,000, Cum Laude PHP 5,000); Board Review Subsidy of PHP 15,000',
+      benefitAmount: 50000,
+      documents: [
+        'Scholarship application form',
+        'One 2x2 ID picture',
+        'Birth certificate',
+        'Form 5 (Certificate of Enrollment)',
+        'Three recommendation letters from former professors (including a former professor of a major subject and of an English subject)',
+        'Certified true copy of grades (all semesters taken)',
+        'Certificate of Good Moral Character'
+      ],
+      deadline: '2026-12-12',
+      instructions: 'Must be a bona fide second-year student at UP Mindanao with a CWA/GWA of 2.00 or better, enrolled in at least 15 units at the time of the awarding, annual family income not above PHP 200,000, and not a recipient of any other scholarship grant. Prepare all listed requirements and submit them with the application form.',
       link: '',
-      compliance: ['Maintain a GWA of 2.25 or better', 'Attend two sample mentoring sessions per semester'],
-      renewal: 'Renews each semester with a progress report.'
+      compliance: [],
+      renewal: 'Not stated in the scholarship list.'
     },
     {
-      id: 5, isSample: true,
-      name: 'Sample Alumni Book Allowance',
-      provider: 'Demo Alumni Association',
-      type: 'Alumni',
-      description: 'A small demonstration allowance for textbooks and learning materials.',
+      id: 2, isSample: false, published: true,
+      name: 'Adopt-a-Scholar',
+      provider: 'UP Mindanao SFAS (donor-funded)',
+      type: 'Private',
+      description: 'Donor-funded student assistance that lets donors and benefactors support UP Mindanao undergraduate students who need financial assistance. A donor may name a student or choose beneficiaries by category (course preference, family income, SLAS result, grade requirement, year level). For category-based selection, SFAS may use SLAS portal information to find matching students.',
       courses: ['Any'],
       yearLevels: [1, 2, 3, 4, 5],
       maxGWA: null,
-      maxIncome: 30000,
+      maxIncome: null,
       fields: ['Any'],
       allowsExistingAid: true,
-      benefits: 'PHP 5,000 one-time book allowance',
-      benefitAmount: 5000,
-      documents: ['Photocopy of school ID', 'Proof of family income'],
-      deadline: dateInDays(4),
-      instructions: 'Sample instructions: two documents only. Closing soon!',
+      benefits: 'Donor-chosen allowance: Plate UP meal allowance (PHP 6,600 to 19,800 per semester), Live UP housing allowance (PHP 2,500 per semester), or Ride UP transportation allowance (PHP 5,500 per semester). Donors and beneficiaries may choose whether to reveal the donor\'s identity.',
+      benefitAmount: 19800,
+      documents: [],
+      deadline: '2026-12-12',
+      instructions: 'No application documents are listed. Matching depends on the donor\'s criteria; SFAS may identify students through the SLAS portal.',
       link: '',
-      compliance: ['Submit receipts for purchased books within 30 days'],
-      renewal: 'One-time grant. Not renewable.'
+      compliance: [],
+      renewal: 'Not stated in the scholarship list.'
     },
     {
-      id: 6, isSample: true,
-      name: 'Sample Future Managers Award',
-      provider: 'Demo Business Circle',
-      type: 'Private',
-      description: 'A demonstration award for management and economics students who show leadership.',
-      courses: ['BS Management Economics'],
-      yearLevels: [3, 4, 5],
-      maxGWA: 2.0,
-      maxIncome: null,
-      fields: ['Management & Economics'],
-      allowsExistingAid: true,
-      benefits: 'PHP 12,000 per semester',
-      benefitAmount: 12000,
-      documents: ['Certified copy of grades', 'Leadership essay', 'Certificate of good moral character'],
-      deadline: dateInDays(45),
-      instructions: 'Sample instructions: write a one-page leadership essay and attach it to your submission.',
-      link: 'https://example.com/sample-managers-award',
-      compliance: ['Maintain a GWA of 2.00 or better', 'Complete 20 hours of sample community service'],
-      renewal: 'Renewable once with a service report.'
-    },
-    {
-      id: 7, isSample: true,
-      name: 'Sample Community Service Leaders Grant',
-      provider: 'Demo University Foundation',
-      type: 'University',
-      description: 'A demonstration grant for students active in community service and campus organizations.',
-      courses: ['Any'],
-      yearLevels: [2, 3, 4, 5],
-      maxGWA: 2.5,
-      maxIncome: null,
-      fields: ['Social Sciences', 'Arts & Humanities', 'Management & Economics'],
-      allowsExistingAid: true,
-      benefits: 'PHP 8,000 per semester',
-      benefitAmount: 8000,
-      documents: ['Certified copy of grades', 'Certificate of community service', 'Photocopy of school ID'],
-      deadline: dateInDays(7),
-      instructions: 'Sample instructions: attach proof of at least 40 hours of community service.',
-      link: '',
-      compliance: ['Maintain a GWA of 2.50 or better', 'Submit a semestral service report'],
-      renewal: 'Renews each semester after a service report.'
-    },
-    {
-      id: 8, isSample: true,
-      name: 'Sample Freshman Access Aid (Closed)',
-      provider: 'Demo Government Agency',
+      id: 3, isSample: false, published: true,
+      name: 'Iskolar ng LANDBANK Program (ILP)',
+      provider: 'LANDBANK Countryside Development Foundation, Inc.',
       type: 'Government',
-      description: 'A demonstration aid for incoming first-year students. Its deadline has already passed so you can see how closed listings look.',
+      description: 'Public/government scholarship for 3rd and 4th year students of BS Agribusiness Economics, BS Food Technology, BS Data Science and BS Computer Science. Must be a qualified regular student with no record of conditional or failing grades and in good academic standing, a permanent resident of Davao del Sur, and not enjoying any other financial assistance, grant or scholarship.',
+      courses: ['BS Agribusiness Economics', 'BS Food Technology', 'BS Data Science', 'BS Computer Science'],
+      yearLevels: [3, 4],
+      maxGWA: null,
+      maxIncome: 300000,
+      fields: ['Management & Economics', 'Science & Mathematics', 'Technology & Computing'],
+      allowsExistingAid: false,
+      benefits: 'Benefits are not stated in the scholarship list.',
+      benefitAmount: 0,
+      documents: [
+        'Duly filled-out and signed ILP application form',
+        'Certified True Copy of Grades from First Year College to the latest available grades',
+        'Letter of Recommendation from the College Dean',
+        'Endorsement letter from a LANDBANK agriculture-related client cooperative, organization or partner SUC, or other government agency',
+        'PSA/NSO photocopy of birth certificate (temporary)',
+        'Proof of registration to the RSBSA, or certification from the Municipal Agriculture Office (MAO), Municipal Agrarian Reform Office (MARO) or equivalent DA/DAR document',
+        'Photocopy of recent ITR of parents, BIR Certificate of Tax Exemption, or Certificate of Indigency (annual family income not above PHP 300,000)',
+        'Certificate of Good Moral Character from the College OSAS or equivalent office',
+        'Barangay Clearance from the home barangay',
+        'Valid medical certificate (SUC clinic or outside government/private clinic or hospital)',
+        'Certification of Non-Enjoyment of Other Scholarship and Grant (signed by the SUC Head or Head of the Scholarship Office/Unit)',
+        'Pre-recorded video (max 3 minutes): "Why I am pursuing my chosen course" and "How do I see myself for nation building?"'
+      ],
+      deadline: '2026-11-02',
+      instructions: 'Submit the signed ILP application form with all eleven documents plus the pre-recorded video (maximum 3 minutes).',
+      link: '',
+      compliance: [],
+      renewal: 'Not stated in the scholarship list.'
+    },
+    {
+      id: 4, isSample: false, published: true,
+      name: 'Sun Life Foundation Scholarship Program',
+      provider: 'Sun Life Foundation',
+      type: 'Private',
+      description: 'Scholarship for 1st year BS Applied Mathematics and BS Computer Science students. Combined annual family gross income must not exceed PHP 500,000, and the applicant must be a permanent resident of Mindanao or Visayas.',
+      courses: ['BS Applied Mathematics', 'BS Computer Science'],
+      yearLevels: [1],
+      maxGWA: null,
+      maxIncome: 500000,
+      fields: ['Science & Mathematics', 'Technology & Computing'],
+      allowsExistingAid: true,
+      benefits: 'Benefits are not stated in the scholarship list.',
+      benefitAmount: 0,
+      documents: [
+        'Scholarship application form',
+        'One 2x2 ID picture',
+        'Three letters of recommendation from former teachers/professors or unit heads',
+        'Certificate of Good Moral Character from your former school',
+        'Form 5 (Certificate of Enrollment)',
+        'Senior HS grades',
+        'Parents\' proof of income: father\'s and mother\'s BIR 2316 for 2025, or other BIR income documents, or notarized affidavit of income for 2025 and 2026 (notarized affidavit of no income if unemployed, death certificate if deceased, proof or notarized affidavit of solo parent if applicable)',
+        'Parents\' SALN',
+        'Essay on life situation and plans in life, on A4 bond paper, at least 250 words'
+      ],
+      deadline: '2026-09-30',
+      instructions: 'Compile all documents into one PDF file named "Surname, First Name", in the order listed. Barangay documents/certificates are no longer accepted.',
+      link: '',
+      compliance: [],
+      renewal: 'Not stated in the scholarship list.'
+    },
+    {
+      id: 5, isSample: false, published: false,
+      name: 'Student Learning Assistance System (SLAS)',
+      provider: 'UP Mindanao',
+      type: 'University',
+      description: 'The scholarship list has no details for this program yet (type, target applicants, qualifications, requirements and deadline are blank). It stays unpublished until they are filled in.',
+      courses: ['Any'],
+      yearLevels: [1, 2, 3, 4, 5],
+      maxGWA: null,
+      maxIncome: null,
+      fields: ['Any'],
+      allowsExistingAid: true,
+      benefits: 'To be announced.',
+      benefitAmount: 0,
+      documents: [],
+      deadline: '2026-12-12',
+      instructions: 'Details to be announced.',
+      link: '',
+      compliance: [],
+      renewal: 'Not stated in the scholarship list.'
+    },
+    {
+      id: 6, isSample: false, published: true,
+      name: 'UP Mindanao Foundation, Inc. Scholarship',
+      provider: 'UP Mindanao Foundation, Inc.',
+      type: 'University',
+      description: 'Scholarship for 4th-year students with limited slots: 3 slots for BS Biology (Christian applicants), 1 slot for Engineering or any related course, and 2 slots for any degree program. No other scholarship or grant upon application, and combined annual family gross income not above PHP 325,000.',
+      courses: ['Any'],
+      yearLevels: [4],
+      maxGWA: null,
+      maxIncome: 325000,
+      fields: ['Any'],
+      allowsExistingAid: false,
+      benefits: 'Benefits are not stated in the scholarship list.',
+      benefitAmount: 0,
+      documents: [
+        'UPMFI Scholarship Application Form',
+        'Two 2x2 ID pictures',
+        'SLAS Certification (SLAS bracket of FDS, FD or PD80 only)',
+        'Certified True Copy of Grades of all semesters attended',
+        'PSA Birth Certificate',
+        'Form 5 (Certificate of Enrollment) - 2nd semester',
+        'Parents\' proof of income: father\'s and mother\'s BIR 2316 for 2025, or other BIR income documents, or notarized affidavit of income for 2025 and 2026 (notarized affidavit of no income if unemployed, death certificate if deceased, proof or notarized affidavit of solo parent if applicable)',
+        'Parents\' SALN 2024 and 2025 (if government employee)',
+        'Current Certificate of Good Moral Character (from OSA)'
+      ],
+      deadline: '2026-08-30',
+      instructions: 'Compile all documents into one PDF file named "Surname, First Name", in the order listed. Barangay documents/certificates are no longer accepted.',
+      link: '',
+      compliance: [],
+      renewal: 'Not stated in the scholarship list.'
+    },
+    {
+      id: 7, isSample: false, published: true,
+      name: 'PeSSA Scholarship Program',
+      provider: 'Philippine Scholarships Sponsors Association (PeSSA)',
+      type: 'Private',
+      description: 'Scholarship for 1st year College of Science and Mathematics students of BS Applied Mathematics, BS Computer Science, BS Food Technology, BS Data Science and BS Biology. Combined annual family gross income must not exceed PHP 500,000.',
+      courses: ['BS Applied Mathematics', 'BS Computer Science', 'BS Food Technology', 'BS Data Science', 'BS Biology'],
+      yearLevels: [1],
+      maxGWA: null,
+      maxIncome: 500000,
+      fields: ['Science & Mathematics', 'Technology & Computing'],
+      allowsExistingAid: true,
+      benefits: 'Benefits are not stated in the scholarship list.',
+      benefitAmount: 0,
+      documents: [
+        'Scholarship application form',
+        'One 2x2 ID picture',
+        'PSA Birth Certificate',
+        'Form 5 (Certificate of Enrollment)',
+        'Parents\' proof of income: father\'s and mother\'s BIR 2316 for 2025, or other BIR income documents, or notarized affidavit of income for 2025 and 2026 (notarized affidavit of no income if unemployed, death certificate if deceased, proof or notarized affidavit of solo parent if applicable)',
+        'Certified True Copy of Grades (SHS)',
+        'Parents\' SALN (if applicable)'
+      ],
+      deadline: '2026-08-26',
+      instructions: 'Compile all documents into one PDF file named "Surname, First Name", in the order listed. Barangay documents/certificates are no longer accepted.',
+      link: '',
+      compliance: [],
+      renewal: 'Not stated in the scholarship list.'
+    },
+    {
+      id: 8, isSample: false, published: true,
+      name: 'Move to Change Foundation Changemakers Scholarship Program',
+      provider: 'Move to Change Foundation, Inc.',
+      type: 'Private',
+      description: 'Scholarship for 1st year students of BS Applied Mathematics, BS Food Technology, BS Computer Science, BS Biology, BS Anthropology, BA Communication Arts and Media Arts, BS Architecture, BA English (Creative Writing), BS Agribusiness Economics, B Sports Science and BS Data Science. Combined annual family gross income must not exceed PHP 250,000.',
+      courses: [
+        'BS Applied Mathematics', 'BS Food Technology', 'BS Computer Science', 'BS Biology',
+        'BS Anthropology', 'BA Communication Arts and Media Arts', 'BS Architecture',
+        'BA English (Creative Writing)', 'BS Agribusiness Economics', 'B Sports Science', 'BS Data Science'
+      ],
+      yearLevels: [1],
+      maxGWA: null,
+      maxIncome: 250000,
+      fields: ['Science & Mathematics', 'Technology & Computing', 'Social Sciences', 'Arts & Humanities', 'Management & Economics'],
+      allowsExistingAid: true,
+      benefits: 'Benefits are not stated in the scholarship list.',
+      benefitAmount: 0,
+      documents: [
+        'Scholarship application form',
+        'One 2x2 ID picture',
+        'Notice of Admission (proof of admission to UP Mindanao)',
+        'PSA Birth Certificate',
+        'Form 5 (Certificate of Enrollment)',
+        'Senior High School grades',
+        'Parents\' proof of income: father\'s and mother\'s BIR 2316 for 2025, or BIR Certification of Income for 2025 and 2026, or notarized affidavit of income for 2025 and 2026 (notarized affidavit of no income if unemployed)',
+        'Parents\' SALN 2025 (if government employee)',
+        'Certificate of Good Moral Character from your high school',
+        'Two letters of recommendation from former teachers, professors or guidance counselors'
+      ],
+      deadline: '2026-07-24',
+      instructions: 'Compile all documents into one PDF file named "Surname, First Name", in the order listed.',
+      link: '',
+      compliance: [],
+      renewal: 'Not stated in the scholarship list.'
+    },
+    {
+      id: 9, isSample: false, published: false,
+      name: 'CHED Merit Scholarship Program (CMSP)',
+      provider: 'Commission on Higher Education (CHED)',
+      type: 'Government',
+      description: 'The scholarship list has no details for this program yet (type, target applicants, qualifications, requirements and deadline are blank). It stays unpublished until they are filled in.',
+      courses: ['Any'],
+      yearLevels: [1, 2, 3, 4, 5],
+      maxGWA: null,
+      maxIncome: null,
+      fields: ['Any'],
+      allowsExistingAid: true,
+      benefits: 'To be announced.',
+      benefitAmount: 0,
+      documents: [],
+      deadline: '2026-12-12',
+      instructions: 'Details to be announced.',
+      link: '',
+      compliance: [],
+      renewal: 'Not stated in the scholarship list.'
+    },
+    {
+      id: 10, isSample: false, published: false,
+      name: 'Scholarship Program for Coconut Farmers and Their Families (CoScho)',
+      provider: 'To be confirmed',
+      type: 'Government',
+      description: 'The scholarship list has no details for this program yet (type, target applicants, qualifications, requirements and deadline are blank). It stays unpublished until they are filled in.',
+      courses: ['Any'],
+      yearLevels: [1, 2, 3, 4, 5],
+      maxGWA: null,
+      maxIncome: null,
+      fields: ['Any'],
+      allowsExistingAid: true,
+      benefits: 'To be announced.',
+      benefitAmount: 0,
+      documents: [],
+      deadline: '2026-12-12',
+      instructions: 'Details to be announced.',
+      link: '',
+      compliance: [],
+      renewal: 'Not stated in the scholarship list.'
+    },
+    {
+      id: 11, isSample: false, published: true,
+      name: 'DOST Scholarship Program',
+      provider: 'Department of Science and Technology (DOST)',
+      type: 'Government',
+      description: 'Scholarship for natural-born Filipino citizens who are Grade 12 students under the STEM track. Non-STEM Grade 12 students must belong to the upper 5% of the graduating class. High school graduates from before the K-12 program must not have earned any post-secondary university units and must also be in the upper 5% of their high school graduating class.',
       courses: ['Any'],
       yearLevels: [1],
       maxGWA: null,
-      maxIncome: 25000,
+      maxIncome: null,
       fields: ['Any'],
-      allowsExistingAid: false,
-      benefits: 'PHP 10,000 one-time grant',
-      benefitAmount: 10000,
-      documents: ['Proof of family income', 'Certificate of admission'],
-      deadline: dateInDays(-5),
-      instructions: 'Sample instructions: this listing is closed.',
+      allowsExistingAid: true,
+      benefits: 'PHP 8,000 monthly living allowance; PHP 5,000 semestral book allowance; PHP 10,000 thesis allowance; PHP 1,000 graduation allowance',
+      benefitAmount: 45000,
+      documents: [],
+      deadline: '2026-12-12',
+      instructions: 'No application documents are listed. Check the eligibility rules in the description before applying.',
       link: '',
-      compliance: ['Enroll full-time for the first semester'],
-      renewal: 'One-time grant. Not renewable.'
+      compliance: [],
+      renewal: 'Not stated in the scholarship list.'
+    },
+    {
+      id: 12, isSample: false, published: true,
+      name: 'UPAA LEAP',
+      provider: 'UP Alumni Association',
+      type: 'Alumni',
+      description: 'Stipend for academically capable, financially constrained undergraduate students who can contribute positively to the UP community. Preferably 4th year level and the first in the family to finish a tertiary degree.',
+      courses: ['Any'],
+      yearLevels: [1, 2, 3, 4, 5],
+      maxGWA: 2.0,
+      maxIncome: null,
+      fields: ['Any'],
+      allowsExistingAid: true,
+      benefits: 'PHP 3,000 monthly stipend',
+      benefitAmount: 15000,
+      documents: [
+        'Parental or personal income documentation showing financial need',
+        'Document showing good moral character'
+      ],
+      deadline: '2026-12-12',
+      instructions: 'Show financial need through parental or personal income documentation. Good moral character is required. 4th-year students and first-generation college graduates are preferred.',
+      link: '',
+      compliance: ['Maintain a GWA of 2.00 or better with no grade below 3.00'],
+      renewal: 'Not stated in the scholarship list.'
+    },
+    {
+      id: 13, isSample: false, published: true,
+      name: 'UPSTREAM Scholarship Program',
+      provider: 'University of the Philippines',
+      type: 'University',
+      description: 'Scholarship providing a monthly living allowance plus a transportation and miscellaneous expense allowance. Applicants are interviewed.',
+      courses: ['Any'],
+      yearLevels: [1, 2, 3, 4, 5],
+      maxGWA: null,
+      maxIncome: null,
+      fields: ['Any'],
+      allowsExistingAid: true,
+      benefits: 'PHP 3,000 monthly living allowance plus PHP 500 monthly transportation and other miscellaneous expense allowance',
+      benefitAmount: 17500,
+      documents: [
+        'Accomplished UPSTREAM application form',
+        'TCG certified by the College Secretary',
+        'BIR Certification (no income), or ITR for the past 2 years, or Barangay Certification',
+        'Two recommendations: one from a professor/instructor and one from SOABE',
+        'Copy of Form 5',
+        'One-page essay on your life situation and goals in life, encoded, 300 to 400 words',
+        'Monthly electricity billing for the last 3 months'
+      ],
+      deadline: '2026-12-12',
+      instructions: 'New applicants submit all listed documents and attend an interview. Continuing applicants submit a complete TCG certified by the College Secretary and a certificate of 20 hours of service.',
+      link: '',
+      compliance: ['Continuing applicants: certificate of 20 hours of service'],
+      renewal: 'Continuing applicants submit a complete TCG certified by the College Secretary and a certificate of 20 hours of service.'
     }
   ];
 }
@@ -257,10 +438,14 @@ function getSampleScholarships() {
 let scholarships = [];
 let applications = [];
 let profile = null;
-let session = null;               // who is signed in: { role: 'student' or 'admin', name: '...' }
+let session = null;               // who is signed in: { role: 'student' or 'admin', name, email }
+let currentUser = null;           // the saved account of the signed-in person (from the users table)
+let dbError = '';                 // message shown when the shared database cannot be reached
+let pendingAnnouncement = null;   // admin: announcement PDF attached to the open scholarship form
+let announcementFile = null;      // admin: PDF chosen in the upload box
+let reviewingAppId = null;        // admin: application being reviewed
 let editingScholarshipId = null;  // admin: id of the scholarship being edited (null = adding a new one)
 let editingAppId = null;      // id of the application being edited (null = creating a new one)
-let formDocs = [];            // documents in the open application form: { name, fileId, fileName, fileType, fileSize }
 let matchingShown = false;    // true after the user clicked "Find Matching Scholarships"
 let toastTimer = null;
 
@@ -307,6 +492,7 @@ function formatDate(s) {
 function isClosed(s) { return daysUntil(s.deadline) < 0; }
 
 function deadlineBadge(deadline) {
+  if (!deadline) return '<span class="badge badge-gray">No deadline</span>';
   const d = daysUntil(deadline);
   if (d < 0) return '<span class="badge badge-red">Closed</span>';
   if (d === 0) return '<span class="badge badge-amber">Due today</span>';
@@ -322,7 +508,7 @@ function findScholarship(id) { return scholarships.find(function (s) { return s.
 function findApp(id) { return applications.find(function (a) { return a.id === id; }); }
 function newAppId() { return applications.reduce(function (max, a) { return Math.max(max, a.id); }, 0) + 1; }
 
-// ----- localStorage -----
+// ----- Browser storage helpers (used for the sign-in session and for Local Demo Mode) -----
 function loadJSON(key, fallback) {
   try {
     const raw = localStorage.getItem(key);
@@ -342,25 +528,147 @@ function saveJSON(key, value) {
   }
 }
 
-function saveScholarships() { saveJSON(KEYS.scholarships, scholarships); }
-function saveApplications() { saveJSON(KEYS.applications, applications); }
-function saveProfile() { saveJSON(KEYS.profile, profile); }
+/* ---------------------------------------------------------------------
+   SHARED DATA LAYER
+   Cloud mode  : Supabase (a free hosted database + file storage). Every user
+                 of the app reads and writes the SAME data.   (see config.js)
+   Local mode  : if config.js is empty, data is kept in THIS browser only
+                 (localStorage + IndexedDB) so the app still runs for testing.
+   Three tables (users, scholarships, applications), each row = id + owner + data.
+   Files (announcement PDFs, student documents) go to one storage bucket.
+   --------------------------------------------------------------------- */
+const CFG = window.ISKOLEKTIB_CONFIG || {};
+const sb = (CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY && window.supabase)
+  ? window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY) : null;
+const BUCKET = 'iskolektib-files';
+const LS_DB = 'iskolektib_db_';
 
-// Runs once at start-up. Only loads sample scholarships if nothing is saved yet,
-// so refreshing the page never overwrites the user's saved data.
-function loadAllData() {
-  const savedScholarships = loadJSON(KEYS.scholarships, null);
-  if (Array.isArray(savedScholarships)) {
-    scholarships = savedScholarships;
-  } else {
-    scholarships = getSampleScholarships();
-    saveScholarships();
+function toRow(item) {
+  const d = Object.assign({}, item);
+  const id = d.id;
+  delete d.id;
+  return { id: id, owner: d.studentEmail || null, data: d };
+}
+function fromRow(r) { return Object.assign({}, r.data, { id: r.id }); }
+function lsTable(t) { return loadJSON(LS_DB + t, {}); }
+
+function idbOpen() {
+  return new Promise(function (resolve, reject) {
+    const r = indexedDB.open('iskolektib_files', 1);
+    r.onupgradeneeded = function () { r.result.createObjectStore('files'); };
+    r.onsuccess = function () { resolve(r.result); };
+    r.onerror = function () { reject(r.error); };
+  });
+}
+async function idbDo(mode, fn) {
+  const d = await idbOpen();
+  return new Promise(function (resolve, reject) {
+    const tx = d.transaction('files', mode);
+    const rq = fn(tx.objectStore('files'));
+    tx.oncomplete = function () { resolve(rq ? rq.result : undefined); };
+    tx.onerror = function () { reject(tx.error); };
+  });
+}
+
+const store = {
+  async list(t, owner) {
+    if (sb) {
+      let q = sb.from(t).select('id,owner,data');
+      if (owner) q = q.eq('owner', owner);
+      const res = await q;
+      if (res.error) throw res.error;
+      return res.data.map(fromRow);
+    }
+    return Object.values(lsTable(t)).filter(function (r) { return !owner || r.owner === owner; }).map(fromRow);
+  },
+  async get(t, id) {
+    if (sb) {
+      const res = await sb.from(t).select('id,owner,data').eq('id', id).maybeSingle();
+      if (res.error) throw res.error;
+      return res.data ? fromRow(res.data) : null;
+    }
+    const r = lsTable(t)[id];
+    return r ? fromRow(r) : null;
+  },
+  // insertOnly = true makes a duplicate id fail (used to keep one account per email)
+  async put(t, item, insertOnly) {
+    const row = toRow(item);
+    if (sb) {
+      const res = await (insertOnly ? sb.from(t).insert(row) : sb.from(t).upsert(row));
+      if (res.error) { if (res.error.code === '23505') throw new Error('DUPLICATE'); throw res.error; }
+      return;
+    }
+    const tb = lsTable(t);
+    if (insertOnly && tb[row.id]) throw new Error('DUPLICATE');
+    tb[row.id] = row;
+    saveJSON(LS_DB + t, tb);
+  },
+  async del(t, id) {
+    if (sb) { const res = await sb.from(t).delete().eq('id', id); if (res.error) throw res.error; return; }
+    const tb = lsTable(t);
+    delete tb[id];
+    saveJSON(LS_DB + t, tb);
+  },
+  async upload(path, file) {
+    if (sb) {
+      const res = await sb.storage.from(BUCKET).upload(path, file, { upsert: true, contentType: file.type });
+      if (res.error) throw res.error;
+      return;
+    }
+    await idbDo('readwrite', function (s) { return s.put(file, path); });
+  },
+  async blob(path) {
+    if (sb) {
+      const res = await sb.storage.from(BUCKET).download(path);
+      if (res.error) throw res.error;
+      return res.data;
+    }
+    const b = await idbDo('readonly', function (s) { return s.get(path); });
+    if (!b) throw new Error('File not found');
+    return b;
+  },
+  async removeFiles(paths) {
+    paths = paths.filter(Boolean);
+    if (!paths.length) return;
+    try {
+      if (sb) { await sb.storage.from(BUCKET).remove(paths); return; }
+      for (const p of paths) await idbDo('readwrite', function (s) { return s.delete(p); });
+    } catch (e) { console.warn('Could not remove files', e); }
   }
-  const savedApps = loadJSON(KEYS.applications, []);
-  applications = Array.isArray(savedApps) ? savedApps : [];
-  profile = loadJSON(KEYS.profile, null);
-  const savedSession = loadJSON(KEYS.session, null);
-  session = savedSession && (savedSession.role === 'student' || savedSession.role === 'admin') ? savedSession : null;
+};
+
+// Runs a save and shows a message if it fails. Returns true/false.
+async function safe(promise, msg) {
+  try { await promise; return true; }
+  catch (e) { console.error(e); showToast((msg || 'Could not save') + ': ' + (e.message || e), 'error'); return false; }
+}
+function persistUser() { return safe(store.put('users', currentUser), 'Could not save your profile'); }
+function persistScholarship(s) { return safe(store.put('scholarships', s), 'Could not save the scholarship'); }
+function persistApp(a) { return safe(store.put('applications', a), 'Could not save the application'); }
+function saveProfile() { currentUser.profile = profile; persistUser(); }
+
+// Loads everything this user is allowed to see from the shared database.
+// Students: published scholarships + their OWN applications. Admin staff: everything.
+async function refreshData() {
+  if (!currentUser) return;
+  try {
+    let all = await store.list('scholarships');
+    if (all.length === 0) {                       // first run: add the sample listings
+      all = getSampleScholarships();
+      await Promise.all(all.map(function (s) { return store.put('scholarships', s); }));
+    }
+    scholarships = isAdmin() ? all : all.filter(function (s) { return s.published !== false; });
+    applications = await store.list('applications', isAdmin() ? null : currentUser.email);
+    dbError = '';
+  } catch (e) {
+    console.error(e);
+    dbError = 'Cannot reach the shared database (' + (e.message || e) + '). Showing the last data loaded.';
+  }
+  const banner = $('db-banner');
+  if (banner) {
+    banner.classList.toggle('hidden', !dbError);
+    banner.textContent = dbError;
+  }
 }
 
 // Fills a <select> dropdown. "items" can be plain text or {value, label} objects.
@@ -488,7 +796,7 @@ function readProfileForm() {
   if (gwaText === '' || isNaN(gwa) || gwa < 1 || gwa > 5) errors.push('GWA must be a number from 1.00 to 5.00.');
   if (incomeText === '' || isNaN(income) || income < 0) errors.push('Monthly family income must be a number (0 or higher).');
   if (!aid) errors.push('Please select your scholarship / financial assistance status.');
-  if (!interest) errors.push('Please select your college.');
+  if (!interest) errors.push('Please select your field of study or academic interest.');
 
   return {
     ok: errors.length === 0,
@@ -499,9 +807,10 @@ function readProfileForm() {
 
 function fillProfileForm() {
   const p = profile || {};
-  $('p-name').value = p.name || (session && session.role === 'student' ? session.name : '') || '';
-  $('p-course').value = p.course || '';
-  $('p-year').value = p.yearLevel ? String(p.yearLevel) : '';
+  const u = currentUser || {};
+  $('p-name').value = p.name || u.fullName || '';
+  $('p-course').value = p.course || u.course || '';
+  $('p-year').value = String(p.yearLevel || u.yearLevel || '');
   $('p-gwa').value = p.gwa !== undefined ? p.gwa : '';
   $('p-income').value = p.income !== undefined ? p.income : '';
   $('p-aid').value = p.aid || 'none';
@@ -615,6 +924,7 @@ function getFilteredScholarships() {
   const sort = val('m-sort');
 
   let list = scholarships.filter(function (s) {
+    if (s.published === false) return false;   // unpublished drafts are never shown in the Marketplace
     if (search && !(s.name.toLowerCase().includes(search) || s.provider.toLowerCase().includes(search))) return false;
     if (course && !(s.courses.includes('Any') || s.courses.includes(course))) return false;
     if (year && !s.yearLevels.includes(year)) return false;
@@ -630,7 +940,7 @@ function getFilteredScholarships() {
 
 function renderMarketplace() {
   const list = getFilteredScholarships();
-  $('market-count').textContent = 'Showing ' + list.length + ' of ' + scholarships.length + ' scholarships (sample demonstration data).';
+  $('market-count').textContent = 'Showing ' + list.length + ' of ' + scholarships.filter(function (s) { return s.published !== false; }).length + ' published scholarships.';
 
   if (list.length === 0) {
     $('market-list').innerHTML = '<div class="card"><p>No scholarships match your search or filters.</p></div>';
@@ -639,7 +949,8 @@ function renderMarketplace() {
 
   $('market-list').innerHTML = list.map(function (s) {
     return '<div class="card">' +
-      '<div class="badges"><span class="badge badge-gray">' + esc(s.type) + '</span></div>' +
+      '<div class="badges"><span class="badge badge-gray">' + esc(s.type) + '</span>' +
+      '</div>' +
       '<h4 class="sch-title">' + esc(s.name) + '</h4>' +
       '<div class="sch-provider">' + esc(s.provider) + '</div>' +
       '<p class="sch-desc">' + esc(s.description) + '</p>' +
@@ -677,10 +988,6 @@ function openDetails(id) {
   html += '<h3 id="modal-title">' + esc(s.name) + '</h3>';
   html += '<div class="sch-provider">' + esc(s.provider) + '</div>';
   html += '<p>' + esc(s.description) + '</p>';
-  if (s.qualifications && s.qualifications.length) {
-    html += '<div class="detail-section"><h4>Qualifications</h4><ul>' +
-      s.qualifications.map(function (q) { return '<li>' + esc(q) + '</li>'; }).join('') + '</ul></div>';
-  }
 
   html += '<div class="detail-section"><h4>Deadline</h4><p>' + formatDate(s.deadline) + ' ' + deadlineBadge(s.deadline) + '</p></div>';
 
@@ -711,6 +1018,9 @@ function openDetails(id) {
   }
 
   html += '<div class="card-actions">' + applyButton(s);
+  if (s.announcement) {
+    html += '<button class="btn btn-secondary btn-small" data-action="view-announcement" data-path="' + esc(s.announcement.path) + '" data-name="' + esc(s.announcement.name) + '" data-type="application/pdf">View original announcement (PDF)</button>';
+  }
   if (s.link && /^https?:\/\//i.test(s.link)) {
     html += '<a class="btn btn-secondary btn-small" href="' + esc(s.link) + '" target="_blank" rel="noopener">Open external page (sample link)</a>';
   }
@@ -720,163 +1030,99 @@ function openDetails(id) {
   $('modal').classList.remove('hidden');
 }
 
-function closeModal() {
-  document.querySelectorAll('#modal-body .preview-area').forEach(clearPreview);
-  $('modal').classList.add('hidden');
-}
+function closeModal() { $('modal').classList.add('hidden'); }
 
 
 /* =====================================================================
-   5B. FILE STORAGE (IndexedDB) AND UPLOAD HELPERS
-   Uploaded PDFs and images are kept in IndexedDB (not localStorage, because
-   files are too large for it). localStorage only keeps the file's id and name.
-   Everything stays inside this browser. Nothing is uploaded to a server.
+   6. FEATURE 3 - APPLICATION MANAGEMENT  (with document uploads + locking)
+   Each application is an object like:
+   { id, scholarshipId, scholarshipName, studentEmail, studentId, status,
+     dateSubmitted, name, email, contact, course, yearLevel, gwa, income, statement,
+     documents: [ { name, done, file: { name, type, size, path } or null } ],
+     adminRemark, disbursement: { status, date, amount } }
+   Only "Draft" applications can be edited. Once submitted they are locked.
    ===================================================================== */
 
-const DB_NAME = 'iskolektib_files';
-const DB_STORE = 'files';
+const ALLOWED_EXT = ['pdf', 'jpg', 'jpeg', 'png'];
+const ALLOWED_MIME = ['application/pdf', 'image/jpeg', 'image/png'];
 const MAX_FILE_MB = 5;
-let dbPromise = null;
+const LOCKED_MESSAGE = 'Your application has been successfully submitted. Your submitted information and documents are now locked and can no longer be edited.';
 
-function openDB() {
-  if (!dbPromise) {
-    dbPromise = new Promise(function (resolve, reject) {
-      if (!window.indexedDB) { reject(new Error('IndexedDB is not available')); return; }
-      const req = indexedDB.open(DB_NAME, 1);
-      req.onupgradeneeded = function () { req.result.createObjectStore(DB_STORE, { keyPath: 'id' }); };
-      req.onsuccess = function () { resolve(req.result); };
-      req.onerror = function () { reject(req.error); };
-    });
-  }
-  return dbPromise;
-}
+let formDocs = [];        // the requirement rows of the open form: { name, file }
+let formAppId = null;     // id of the application being filled in (used in file paths)
+let saving = false;
 
-// Runs one IndexedDB operation. "action" receives the object store and returns a request.
-function dbRun(mode, action) {
-  return openDB().then(function (db) {
-    return new Promise(function (resolve, reject) {
-      const tx = db.transaction(DB_STORE, mode);
-      const req = action(tx.objectStore(DB_STORE));
-      tx.oncomplete = function () { resolve(req ? req.result : undefined); };
-      tx.onerror = tx.onabort = function () { reject(tx.error); };
-    });
-  });
-}
+// ----- File helpers (shared with the admin pages) -----
+function extOf(name) { const m = /\.([a-z0-9]+)$/i.exec(name || ''); return m ? m[1].toLowerCase() : ''; }
+function mimeOf(name) { const e = extOf(name); return e === 'pdf' ? 'application/pdf' : (e === 'png' ? 'image/png' : 'image/jpeg'); }
+function safeName(name) { return String(name).replace(/[^A-Za-z0-9._-]+/g, '_').slice(-80); }
+function fmtSize(n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
 
-function saveFile(file) {
-  const id = 'f' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-  return dbRun('readwrite', function (s) {
-    return s.put({ id: id, name: file.name, type: file.type, size: file.size, blob: file });
-  }).then(function () { return id; });
-}
-function getFile(id) { return dbRun('readonly', function (s) { return s.get(id); }); }
-function deleteFile(id) {
-  if (!id) return Promise.resolve();
-  return dbRun('readwrite', function (s) { return s.delete(id); }).catch(function () {});
-}
-function clearFiles() { return dbRun('readwrite', function (s) { return s.clear(); }).catch(function () {}); }
-
-function sizeText(bytes) {
-  return bytes < 1048576 ? Math.max(1, Math.round(bytes / 1024)) + ' KB' : (bytes / 1048576).toFixed(1) + ' MB';
-}
-
-// Returns '' if the file is allowed, otherwise a friendly error message
-function checkUpload(file, pdfOnly) {
-  const name = file.name.toLowerCase();
-  const okExt = pdfOnly ? /\.pdf$/.test(name) : /\.(pdf|jpg|jpeg|png)$/.test(name);
-  const okMime = !file.type || (pdfOnly ? file.type === 'application/pdf' : ['application/pdf', 'image/jpeg', 'image/png'].includes(file.type));
-  if (!okExt || !okMime) return pdfOnly ? 'Please choose a PDF file (.pdf).' : 'Only PDF, JPG, JPEG or PNG files are allowed.';
-  if (file.size === 0) return 'That file is empty.';
-  if (file.size > MAX_FILE_MB * 1048576) return 'That file is ' + sizeText(file.size) + '. The maximum is ' + MAX_FILE_MB + ' MB per file.';
+// Returns an error message, or '' if the file is acceptable
+function validateFile(file) {
+  if (!ALLOWED_EXT.includes(extOf(file.name))) return 'Only PDF, JPG, JPEG or PNG files are allowed.';
+  if (file.type && !ALLOWED_MIME.includes(file.type)) return '"' + file.name + '" is not a valid PDF, JPG or PNG file.';
+  if (file.size === 0) return '"' + file.name + '" is empty.';
+  if (file.size > MAX_FILE_MB * 1024 * 1024) return '"' + file.name + '" is larger than ' + MAX_FILE_MB + ' MB.';
   return '';
 }
 
-// Table of documents with status badges and Preview / Download buttons.
-// editable = true adds a file chooser to each row (used only in the draft form).
-function docRowsHTML(docs, editable) {
-  return '<div class="doc-block">' + docs.map(function (d, i) {
-    const up = !!d.fileId;
-    return '<div class="doc-row"><div class="doc-info"><strong>' + esc(d.name) + '</strong>' +
-      '<div class="muted small">' + (up ? esc(d.fileName) + ' (' + sizeText(d.fileSize) + ')' : 'No file uploaded') + '</div></div>' +
-      '<span class="badge ' + (up ? 'badge-green' : 'badge-amber') + '">' + (up ? 'Uploaded' : 'Not Yet Uploaded') + '</span>' +
-      '<div class="doc-actions">' +
-      (editable ? '<input type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" data-action="doc-file" data-index="' + i + '" aria-label="Upload ' + esc(d.name) + '">' : '') +
-      (up ? '<button type="button" class="btn btn-secondary btn-small" data-action="file-preview" data-file="' + esc(d.fileId) + '">Preview</button>' +
-            '<button type="button" class="btn btn-secondary btn-small" data-action="file-download" data-file="' + esc(d.fileId) + '">Download</button>' : '') +
-      '</div></div>';
-  }).join('') + '<div class="preview-area"></div></div>';
+function fileButtons(file) {
+  const attrs = ' data-path="' + esc(file.path) + '" data-name="' + esc(file.name) + '" data-type="' + esc(file.type || mimeOf(file.name)) + '"';
+  return '<button type="button" class="btn btn-secondary btn-small" data-action="file-preview"' + attrs + '>Preview</button>' +
+    '<button type="button" class="btn btn-secondary btn-small" data-action="file-download"' + attrs + '>Download</button>';
 }
 
-function clearPreview(area) {
-  if (area && area.dataset.url) { URL.revokeObjectURL(area.dataset.url); area.dataset.url = ''; }
-  if (area) area.innerHTML = '';
+function uploadBadge(file) {
+  return file ? '<span class="badge badge-green">Uploaded</span>' : '<span class="badge badge-amber">Not Yet Uploaded</span>';
 }
 
-// Shows a PDF (in a frame) or an image right under the document list
-async function previewFile(fileId, area) {
-  if (!area) return;
-  clearPreview(area);
-  try {
-    const rec = await getFile(fileId);
-    if (!rec) { area.innerHTML = '<div class="alert alert-error">This file was not found in the browser storage.</div>'; return; }
-    const isPdf = /\.pdf$/i.test(rec.name);
-    const url = URL.createObjectURL(new Blob([rec.blob], { type: isPdf ? 'application/pdf' : rec.type }));
-    area.dataset.url = url;
-    area.innerHTML = '<div class="preview-head"><strong>' + esc(rec.name) + '</strong>' +
-      '<button type="button" class="btn btn-ghost btn-small" data-action="preview-close">Close preview</button></div>' +
-      (isPdf ? '<iframe class="preview-frame" src="' + url + '" title="PDF preview"></iframe>'
-             : '<img class="preview-img" src="' + url + '" alt="' + esc(rec.name) + '">');
-  } catch (e) {
-    area.innerHTML = '<div class="alert alert-error">Could not open the file.</div>';
-  }
+// Read-only list of requirements and their files (student cards and admin review)
+function docsListHTML(docs) {
+  return '<div class="doc-list">' + docs.map(function (d) {
+    return '<div class="doc-row"><div class="doc-main"><strong>' + esc(d.name) + '</strong> ' + uploadBadge(d.file) +
+      (d.file ? '<div class="doc-file">' + esc(d.file.name) + ' (' + fmtSize(d.file.size) + ')</div>' : '') + '</div>' +
+      '<div class="doc-actions">' + (d.file ? fileButtons(d.file) : '') + '</div></div>';
+  }).join('') + '</div>';
 }
 
-async function downloadFile(fileId) {
-  try {
-    const rec = await getFile(fileId);
-    if (!rec) { showToast('File not found in this browser.', 'error'); return; }
-    const url = URL.createObjectURL(rec.blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = rec.name;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
-  } catch (e) { showToast('Could not download the file.', 'error'); }
+// Shows a Blob/File in the preview window (images are shown, PDFs open in a frame)
+let previewUrl = null;
+function showPreview(blob, name, type) {
+  closePreview();
+  const typed = new Blob([blob], { type: type || mimeOf(name) });
+  previewUrl = URL.createObjectURL(typed);
+  const isPdf = (type || mimeOf(name)) === 'application/pdf';
+  $('preview-body').innerHTML = '<h3>' + esc(name) + '</h3>' +
+    (isPdf ? '<iframe class="preview-frame" src="' + previewUrl + '" title="PDF preview"></iframe>'
+           : '<img class="preview-img" src="' + previewUrl + '" alt="' + esc(name) + '">') +
+    '<div class="card-actions"><a class="btn btn-secondary btn-small" href="' + previewUrl + '" target="_blank" rel="noopener">Open in new tab</a>' +
+    '<a class="btn btn-secondary btn-small" href="' + previewUrl + '" download="' + esc(name) + '">Download</a>' +
+    '<button type="button" class="btn btn-ghost btn-small" data-action="close-preview">Close</button></div>';
+  $('preview-modal').classList.remove('hidden');
+}
+function closePreview() {
+  $('preview-modal').classList.add('hidden');
+  $('preview-body').innerHTML = '';
+  if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
+}
+async function previewStored(el) {
+  try { showPreview(await store.blob(el.dataset.path), el.dataset.name, el.dataset.type); }
+  catch (e) { showToast('Could not open the file: ' + (e.message || e), 'error'); }
+}
+async function downloadStored(el) {
+  try { downloadBlob(await store.blob(el.dataset.path), el.dataset.name, el.dataset.type); }
+  catch (e) { showToast('Could not download the file: ' + (e.message || e), 'error'); }
+}
+function downloadBlob(blob, name, type) {
+  const url = URL.createObjectURL(new Blob([blob], { type: type || mimeOf(name) }));
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
 }
 
-// Student form: a file was chosen for requirement number "index"
-async function handleDocFile(input) {
-  const i = Number(input.dataset.index);
-  const file = input.files[0];
-  const current = editingAppId ? findApp(editingAppId) : null;
-  if (current && current.status !== 'Draft') { showToast('This application is locked. Documents cannot be changed.', 'error'); return; }
-  if (!file || !formDocs[i]) return;
-  const problem = checkUpload(file, false);
-  if (problem) { showToast(problem, 'error'); input.value = ''; return; }
-  try {
-    const id = await saveFile(file);
-    formDocs[i].fileId = id;
-    formDocs[i].fileName = file.name;
-    formDocs[i].fileType = file.type;
-    formDocs[i].fileSize = file.size;
-    renderFormDocsList();
-    showToast('"' + file.name + '" attached to ' + formDocs[i].name + '.');
-  } catch (e) {
-    showToast('Could not store the file in this browser.', 'error');
-    input.value = '';
-  }
-}
-
-
-/* =====================================================================
-   6. FEATURE 3 - APPLICATION MANAGEMENT
-   Each application is an object like:
-   { id, scholarshipId, status, dateSubmitted, name, email, contact, course,
-     yearLevel, gwa, income, statement,
-     documents: [ { name, done, fileId, fileName, fileType, fileSize } ],
-     adminNote (shown when the admin marks it Incomplete),
-     disbursement: { status, date, amount } }
-   ===================================================================== */
-
+// ----- Form helpers -----
 function showAppForm(show) {
   $('app-list-view').classList.toggle('hidden', show);
   $('app-form-view').classList.toggle('hidden', !show);
@@ -890,69 +1136,78 @@ function showFormErrors(errors) {
   box.classList.remove('hidden');
 }
 
-// Students can only open the form for new applications and drafts, so the buttons are always Submit + Save Draft
-function setFormButtons() {
-  $('af-submit').classList.remove('hidden');
-  $('af-draft').classList.remove('hidden');
+function showAppFlash(message) {
+  const box = $('app-flash');
+  if (!message) { box.classList.add('hidden'); box.textContent = ''; return; }
+  box.textContent = message;
+  box.classList.remove('hidden');
 }
 
-// Shows one upload row per required document and a short info box for the chosen scholarship
-function renderFormDocsList() {
-  $('af-docs').innerHTML = docRowsHTML(formDocs, true);
-}
-
-function renderFormDocs(app) {
+// One upload row per requirement, plus a short info box for the chosen scholarship
+function renderFormDocs() {
   const s = findScholarship(Number(val('af-scholarship')));
   if (!s) {
-    formDocs = [];
     $('af-docs').innerHTML = '<p class="muted">Choose a scholarship to see its required documents.</p>';
     $('af-scholarship-info').innerHTML = '';
     return;
   }
-  formDocs = (app ? app.documents : s.documents.map(function (name) { return { name: name }; })).map(function (d) {
-    return { name: d.name, fileId: d.fileId || '', fileName: d.fileName || '', fileType: d.fileType || '', fileSize: d.fileSize || 0 };
-  });
-  renderFormDocsList();
+  $('af-docs').innerHTML = formDocs.map(function (d, i) {
+    return '<div class="doc-row"><div class="doc-main"><strong>' + esc(d.name) + '</strong> ' + uploadBadge(d.file) +
+      '<div class="doc-file">' + (d.file ? esc(d.file.name) + ' (' + fmtSize(d.file.size) + ')' : 'PDF, JPG, JPEG or PNG, up to ' + MAX_FILE_MB + ' MB') + '</div></div>' +
+      '<div class="doc-actions">' +
+      '<label class="btn btn-primary btn-small file-btn">' + (d.file ? 'Replace file' : 'Choose file') +
+        '<input type="file" class="file-input" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" data-action="doc-upload" data-index="' + i + '"></label>' +
+      (d.file ? fileButtons(d.file) + '<button type="button" class="btn btn-danger btn-small" data-action="doc-remove" data-index="' + i + '">Remove</button>' : '') +
+      '</div></div>';
+  }).join('');
 
   $('af-scholarship-info').innerHTML = '<div class="alert alert-info"><strong>' + esc(s.provider) + '</strong> &middot; Deadline: ' +
     formatDate(s.deadline) + ' ' + deadlineBadge(s.deadline) + '<br>Benefits: ' + esc(s.benefits) +
     '<br>How to apply: ' + esc(s.instructions) + '</div>';
 }
 
+function setDocsFromScholarship() {
+  const s = findScholarship(Number(val('af-scholarship')));
+  formDocs = s ? s.documents.map(function (name) { return { name: name, file: null }; }) : [];
+}
+
 function openNewAppForm(prefilledId) {
   editingAppId = null;
+  formAppId = Date.now();
   const openOnes = scholarships.filter(function (s) { return !isClosed(s); });
   fillSelect('af-scholarship', openOnes.map(function (s) { return { value: s.id, label: s.name }; }), 'Select a scholarship');
   $('af-scholarship').disabled = false;
   if (prefilledId) $('af-scholarship').value = String(prefilledId);
 
-  // Pre-fill personal details from the saved profile so the student does not retype them
+  // Personal details come from the saved account profile
+  const u = currentUser || {};
   const p = profile || {};
-  $('af-name').value = p.name || '';
-  $('af-email').value = '';
+  $('af-name').value = u.fullName || '';
+  $('af-email').value = u.email || '';
   $('af-contact').value = '';
-  $('af-course').value = p.course || '';
-  $('af-year').value = p.yearLevel ? String(p.yearLevel) : '';
+  $('af-course').value = p.course || u.course || '';
+  $('af-year').value = String(p.yearLevel || u.yearLevel || '');
   $('af-gwa').value = p.gwa !== undefined ? p.gwa : '';
   $('af-income').value = p.income !== undefined ? p.income : '';
   $('af-statement').value = '';
 
   $('app-form-title').textContent = 'New Scholarship Application';
-  setFormButtons();
+  setDocsFromScholarship();
   showFormErrors([]);
-  renderFormDocs(null);
+  renderFormDocs();
   showAppForm(true);
 }
 
 function openEditForm(app) {
+  if (!app || app.status !== 'Draft') { showToast('This application is locked and can no longer be edited.', 'error'); return; }
   editingAppId = app.id;
-  const s = findScholarship(app.scholarshipId);
-  fillSelect('af-scholarship', [{ value: app.scholarshipId, label: s ? s.name : 'Unknown scholarship' }]);
+  formAppId = app.id;
+  fillSelect('af-scholarship', [{ value: app.scholarshipId, label: app.scholarshipName || 'Scholarship' }]);
   $('af-scholarship').value = String(app.scholarshipId);
   $('af-scholarship').disabled = true;   // the scholarship of an existing application cannot be changed
 
   $('af-name').value = app.name || '';
-  $('af-email').value = app.email || '';
+  $('af-email').value = app.email || currentUser.email;
   $('af-contact').value = app.contact || '';
   $('af-course').value = app.course || '';
   $('af-year').value = app.yearLevel ? String(app.yearLevel) : '';
@@ -961,9 +1216,9 @@ function openEditForm(app) {
   $('af-statement').value = app.statement || '';
 
   $('app-form-title').textContent = 'Edit Draft Application';
-  setFormButtons();
+  formDocs = app.documents.map(function (d) { return { name: d.name, file: d.file || null }; });
   showFormErrors([]);
-  renderFormDocs(app);
+  renderFormDocs();
   showAppForm(true);
 }
 
@@ -978,15 +1233,14 @@ function startApplication(id) {
   const existing = applications.find(function (a) { return a.scholarshipId === id; });
   if (!existing) {
     openNewAppForm(id);
-  } else if (EDITABLE_STATUSES.includes(existing.status)) {
+  } else if (existing.status === 'Draft') {
     openEditForm(existing);
     showToast('You already have a draft for this scholarship. Opening it.', 'info');
   } else {
-    showToast('You already submitted an application for this scholarship (status: ' + existing.status + '). It is locked.', 'info');
+    showToast('You already submitted an application for this scholarship (status: ' + existing.status + ').', 'info');
   }
 }
 
-// Reads all fields of the application form into one object
 function readAppForm() {
   return {
     scholarshipId: Number(val('af-scholarship')),
@@ -1009,8 +1263,6 @@ function validateAppForm(f, strict) {
     const gwa = Number(f.gwaText);
     const income = Number(f.incomeText);
     if (!f.name) errors.push('Full name is required.');
-    if (!f.email) errors.push('Email address is required.');
-    else if (!/^\S+@\S+\.\S+$/.test(f.email)) errors.push('Please enter a valid email address.');
     if (!f.course) errors.push('Course / degree program is required.');
     if (!f.yearLevel) errors.push('Year level is required.');
     if (f.gwaText === '' || isNaN(gwa) || gwa < 1 || gwa > 5) errors.push('GWA must be a number from 1.00 to 5.00.');
@@ -1020,113 +1272,98 @@ function validateAppForm(f, strict) {
   return errors;
 }
 
-// Reads the document checkboxes from the form
+// A student picked a file for one requirement: check it, then upload it
+async function handleDocUpload(input) {
+  const i = Number(input.dataset.index);
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file || !formDocs[i]) return;
+  const err = validateFile(file);
+  if (err) { showToast(err, 'error'); return; }
+  showToast('Uploading ' + file.name + '...', 'info');
+  const path = 'applications/' + formAppId + '/' + i + '-' + Date.now() + '-' + safeName(file.name);
+  try { await store.upload(path, file); }
+  catch (e) { showToast('Upload failed: ' + (e.message || e), 'error'); return; }
+  formDocs[i].file = { name: file.name, type: file.type || mimeOf(file.name), size: file.size, path: path };
+  renderFormDocs();
+  showToast('"' + file.name + '" uploaded for ' + formDocs[i].name + '.');
+}
 
-
-// mode is 'draft' (save draft), 'submit' (submit), or 'update' (save changes to an existing application)
 // mode is 'draft' (save draft) or 'submit' (final submission, which locks the application)
-function saveApplication(mode) {
+async function saveApplication(mode) {
+  if (saving || !currentUser || isAdmin()) return;
   const f = readAppForm();
+  const existing = editingAppId ? findApp(editingAppId) : null;
+  if (existing && existing.status !== 'Draft') { showToast('This application is locked and can no longer be edited.', 'error'); return; }
+
   const errors = validateAppForm(f, mode === 'submit');
   const scholarship = findScholarship(f.scholarshipId);
-  const existingApp = editingAppId ? findApp(editingAppId) : null;
-
-  if (existingApp && existingApp.status !== 'Draft') {
-    showToast('This application is locked and can no longer be edited.', 'error');
-    return;
-  }
   if (scholarship && mode === 'submit' && isClosed(scholarship)) {
     errors.push('The deadline for this scholarship has passed, so it cannot be submitted.');
   }
   if (f.scholarshipId && applications.some(function (a) { return a.scholarshipId === f.scholarshipId && a.id !== editingAppId; })) {
-    errors.push('You already have an application for this scholarship. Edit it from the My Applications list instead.');
+    errors.push('You already have an application for this scholarship.');
   }
   if (mode === 'submit') {
-    formDocs.forEach(function (d) { if (!d.fileId) errors.push('Missing required document: ' + d.name + '. Please upload it.'); });
+    formDocs.forEach(function (d) { if (!d.file) errors.push('Missing required document: ' + d.name + '. Please upload it.'); });
   }
   if (errors.length > 0) {
     showFormErrors(errors);
     showToast('Application not saved. Please fix the errors.', 'error');
     return;
   }
-  if (mode === 'submit' && !confirm('Are you sure you want to submit this application?\n\nOnce submitted, your information and documents will be LOCKED. You will not be able to edit them, replace files, delete files, or upload more requirements.')) return;
 
-  let app = existingApp;
-  if (!app) {
-    app = {
-      id: newAppId(),
-      scholarshipId: f.scholarshipId,
-      status: 'Draft',
-      dateSubmitted: '',
-      disbursement: { status: 'Not Yet Approved', date: '', amount: scholarship.benefitAmount }
-    };
-    applications.push(app);
-  }
+  if (mode === 'submit' && !confirm('Are you sure you want to submit this application?\n\nOnce submitted, your application and uploaded documents will be LOCKED and can no longer be edited, replaced or deleted.')) return;
 
+  saving = true;
+  const app = existing || {
+    id: formAppId, status: 'Draft', dateSubmitted: '',
+    disbursement: { status: 'Not Yet Approved', date: '', amount: scholarship.benefitAmount }
+  };
+  app.scholarshipId = f.scholarshipId;
+  app.scholarshipName = scholarship.name;
+  app.studentEmail = currentUser.email;
+  app.studentId = currentUser.id;
+  app.studentNumber = currentUser.studentNumber || '';
   app.name = f.name;
-  app.email = f.email;
+  app.email = currentUser.email;
   app.contact = f.contact;
   app.course = f.course;
   app.yearLevel = f.yearLevel;
   app.gwa = f.gwaText === '' ? '' : Number(f.gwaText);
   app.income = f.incomeText === '' ? '' : Number(f.incomeText);
   app.statement = f.statement;
-  app.documents = formDocs.map(function (d) {
-    return { name: d.name, done: !!d.fileId, fileId: d.fileId, fileName: d.fileName, fileType: d.fileType, fileSize: d.fileSize };
-  });
-
+  app.documents = formDocs.map(function (d) { return { name: d.name, done: !!d.file, file: d.file }; });
   if (mode === 'submit') {
     app.status = 'Submitted';
     app.dateSubmitted = todayISO();
+    app.submittedAt = new Date().toISOString();
   }
 
-  saveApplications();
+  const ok = await persistApp(app);
+  saving = false;
+  if (!ok) { if (mode === 'submit') { app.status = 'Draft'; app.dateSubmitted = ''; } return; }
+  if (!existing) applications.push(app);
+
   renderAll();
   showAppForm(false);
   editingAppId = null;
-
-  if (mode === 'submit') showToast(LOCK_MESSAGE, 'success');
-  else showToast('Draft saved. You can still edit it before submitting.');
+  if (mode === 'submit') { showAppFlash(LOCKED_MESSAGE); showToast('Application submitted and locked.'); }
+  else { showAppFlash(''); showToast('Draft saved.'); }
+  window.scrollTo(0, 0);
 }
 
-// Called when the status dropdown on an application card changes (demonstration control)
-// Used by the admin (Student Applications). The note is only kept for "Incomplete".
-function changeStatus(id, newStatus, note) {
-  const app = findApp(id);
-  if (!app || !isAdmin()) return;
-  if (app.status === newStatus && (app.adminNote || '') === (note || '')) return;
-
-  app.status = newStatus;
-  app.adminNote = note || '';
-
-  // Disbursement only applies to approved applications
-  if (newStatus === 'Approved') {
-    if (app.disbursement.status === 'Not Yet Approved') app.disbursement.status = 'Pending';
-  } else {
-    app.disbursement.status = 'Not Yet Approved';
-  }
-
-  saveApplications();
-  renderAll();
-  showToast('Status changed to "' + newStatus + '". The student can see it in My Applications.');
-}
-
-
-
-function deleteApplication(id) {
+async function deleteApplication(id) {
   const app = findApp(id);
   if (!app) return;
   if (app.status !== 'Draft') { showToast('Submitted applications are locked and cannot be deleted.', 'error'); return; }
-  const s = findScholarship(app.scholarshipId);
-  if (!confirm('Delete your draft for "' + (s ? s.name : 'this scholarship') + '" and its uploaded files? This cannot be undone.')) return;
-  app.documents.forEach(function (d) { deleteFile(d.fileId); });
+  if (!confirm('Delete your draft for "' + (app.scholarshipName || 'this scholarship') + '"? This cannot be undone.')) return;
+  if (!(await safe(store.del('applications', id), 'Could not delete the draft'))) return;
+  store.removeFiles(app.documents.map(function (d) { return d.file && d.file.path; }));
   applications = applications.filter(function (a) { return a.id !== id; });
-  saveApplications();
   renderAll();
   showToast('Draft deleted.');
 }
-
-const LOCK_MESSAGE = 'Your application has been successfully submitted. Your submitted information and documents are now locked and can no longer be edited.';
 
 function renderApplications() {
   const box = $('app-list');
@@ -1136,13 +1373,12 @@ function renderApplications() {
     return;
   }
 
-  // Newest first
   const sorted = applications.slice().sort(function (a, b) { return b.id - a.id; });
 
   box.innerHTML = sorted.map(function (app) {
-    const s = findScholarship(app.scholarshipId) || { name: 'Removed scholarship', provider: '-', deadline: '' };
-    const uploaded = app.documents.filter(function (d) { return d.fileId; }).length;
+    const s = findScholarship(app.scholarshipId) || { name: app.scholarshipName || 'Removed scholarship', provider: '-', deadline: '' };
     const isDraft = app.status === 'Draft';
+    const missing = app.documents.filter(function (d) { return !d.file; });
 
     let html = '<div class="card app-card">';
     html += '<div class="app-head"><div><h4 class="sch-title">' + esc(s.name) + '</h4>' +
@@ -1151,31 +1387,36 @@ function renderApplications() {
     html += '<div class="app-meta">' +
       '<div><span>Applicant</span>' + esc(app.name || '(no name yet)') + '</div>' +
       '<div><span>Date submitted</span>' + (app.dateSubmitted ? formatDate(app.dateSubmitted) : 'Not submitted yet') + '</div>' +
-      '<div><span>Application deadline</span>' + (s.deadline ? formatDate(s.deadline) + ' ' + deadlineBadge(s.deadline) : '-') + '</div>' +
+      '<div><span>Course and year</span>' + esc((app.course || '-') + (app.yearLevel ? ', ' + yearLabel(app.yearLevel) : '')) + '</div>' +
       '</div>';
 
-    html += '<div class="checklist"><h4>Documents (' + uploaded + ' of ' + app.documents.length + ' uploaded)</h4>' + docRowsHTML(app.documents, false) + '</div>';
+    if (app.status === 'Incomplete') {
+      html += '<div class="alert alert-warn"><strong>The reviewer marked your application as Incomplete.</strong>' +
+        (app.adminRemark ? '<br>Reviewer note: ' + esc(app.adminRemark) : '') +
+        '<br>For this prototype, submitted applications stay locked. Please contact the scholarship office.</div>';
+    } else if (!isDraft && app.adminRemark) {
+      html += '<div class="alert alert-info">Reviewer note: ' + esc(app.adminRemark) + '</div>';
+    }
+
+    html += '<div class="checklist"><h4>Uploaded requirements (' + (app.documents.length - missing.length) + ' of ' + app.documents.length + ')</h4>' +
+      docsListHTML(app.documents) + '</div>';
 
     if (isDraft) {
-      html += '<div class="alert alert-warn">Draft: not submitted yet. You can still edit it and upload documents.</div>';
+      html += '<div class="alert alert-info">This is a draft. It has not been submitted yet' +
+        (missing.length ? ' and ' + missing.length + ' document(s) are still missing.' : '.') + '</div>';
     } else {
-      html += '<div class="alert alert-ok lock-note">&#128274; ' + esc(LOCK_MESSAGE) + '</div>';
-    }
-    if (app.status === 'Incomplete') {
-      html += '<div class="alert alert-warn"><strong>Reviewer note:</strong> ' + esc(app.adminNote || 'Some requirements are missing or incorrect. Please contact the scholarship office.') +
-        '<br><small>In this prototype, locked applications cannot be edited. Please contact the scholarship office.</small></div>';
+      html += '<div class="alert alert-ok">&#128274; Locked. Your submitted information and documents can no longer be edited, replaced or deleted.</div>';
     }
 
     html += '<div class="card-actions">' +
       (isDraft
         ? '<button class="btn btn-secondary btn-small" data-action="edit-app" data-id="' + app.id + '">Edit / Submit</button>' +
           '<button class="btn btn-danger btn-small" data-action="delete-app" data-id="' + app.id + '">Delete draft</button>'
-        : '<button class="btn btn-secondary btn-small" disabled title="Submitted applications are locked">Locked</button>') +
-      '</div></div>';
+        : '<button class="btn btn-secondary btn-small" disabled>Locked</button>') + '</div>';
+    html += '</div>';
     return html;
   }).join('');
 }
-
 
 /* =====================================================================
    7. FEATURE 4 - TRACKING & DISBURSEMENT
@@ -1188,7 +1429,7 @@ function getTimeline(app) {
   const d = app.disbursement.status;
   states[0] = 'done';   // only submitted applications appear in tracking
 
-  if (['Submitted', 'Under Review', 'Verified', 'Incomplete'].includes(app.status)) {
+  if (app.status === 'Submitted' || app.status === 'Under Review' || app.status === 'Verified' || app.status === 'Incomplete') {
     states[1] = 'current';
   } else if (app.status === 'Approved') {
     states[1] = 'done';
@@ -1232,7 +1473,7 @@ function renderTracking() {
       html += '<div class="alert alert-warn">The scheduled disbursement date has passed but the funds are not marked as Released.</div>';
     }
     if (app.status === 'Incomplete') {
-      html += '<div class="alert alert-warn">The reviewer marked your application Incomplete. See the note in My Applications.</div>';
+      html += '<div class="alert alert-warn">The reviewer marked this application as Incomplete. See My Applications for the note.</div>';
     }
 
     // Timeline
@@ -1253,7 +1494,7 @@ function renderTracking() {
       '</div>';
 
     if (locked) {
-      html += '<p class="muted">Disbursement fields unlock once the application is Approved. (They unlock when the admin sets the application to Approved.)</p>';
+      html += '<p class="muted">Disbursement fields unlock once the application is Approved. (For this demo, change the status in My Applications.)</p>';
     } else {
       html += '<div class="card-actions"><button class="btn btn-primary btn-small" data-action="save-tracking" data-id="' + app.id + '">Save Tracking Update</button></div>';
     }
@@ -1290,7 +1531,7 @@ function saveTracking(id, card) {
     date: card.querySelector('.t-date').value,
     amount: amount
   };
-  saveApplications();
+  persistApp(app);
   renderAll();
   showToast('Tracking information updated.');
 }
@@ -1334,7 +1575,7 @@ function renderDashboard() {
     statCard('Approved', approved, 'applications', 'green') +
     statCard('Pending or delayed disbursements', pendingOrDelayed.length, delayedCount + ' delayed', delayedCount > 0 ? 'red' : '');
 
-  $('welcome-title').textContent = profile ? 'Welcome, ' + profile.name + '!' : 'Welcome, Iskx!';
+  $('welcome-title').textContent = session ? 'Welcome, ' + session.name + '!' : 'Welcome, Iskx!';
 
   // Upcoming deadlines: next 5 open scholarships
   const upcoming = openOnes.slice().sort(function (a, b) { return a.deadline.localeCompare(b.deadline); }).slice(0, 5);
@@ -1373,42 +1614,270 @@ function renderDashboard() {
 // Re-draws every section. Called after any change so all numbers stay up to date.
 function renderAll() {
   renderRoleInfo();
-  renderDashboard();
-  renderMarketplace();
-  renderApplications();
-  renderTracking();
-  renderManage();
-  renderAdminApps();
+  if (isAdmin()) {
+    renderMarketplace();
+    renderManage();
+    renderStudentApps();
+  } else {
+    renderDashboard();
+    renderMarketplace();
+    renderApplications();
+    renderTracking();
+  }
 }
 
 
 /* =====================================================================
-   8B. SIGN-IN, ROLES AND ADMIN SCHOLARSHIP MANAGEMENT
-   There are two roles:
-     - "student": uses Dashboard, Matching, Marketplace, My Applications, Tracking
-     - "admin":   scholarship office staff. Adds, edits and deletes scholarship
-                  listings (Manage Scholarships) and can browse the Marketplace.
-   Listings added by admin staff are saved in the same localStorage data that
-   students read, so they show up in the Marketplace and Matching right away.
-
-   IMPORTANT: this is a DEMONSTRATION sign-in. Everything runs in the browser,
-   so anyone can bypass it. A real system needs a server to check logins.
+   PDF TEXT EXTRACTION  (Feature 1)
+   Step 1: PDF.js reads the text of a text-based PDF.
+   Step 2: parseScholarshipText() looks for labels such as "Deadline:" or
+           "Required documents" and simple patterns (dates, amounts, GWA).
+   Anything it cannot find is left blank. It never invents information.
+   Scanned PDFs (pictures of text) have no selectable text, so they cannot be read.
    ===================================================================== */
 
-// DEMO ONLY: anyone who views the page source can read this passcode.
+async function pdfToText(file) {
+  if (!window.pdfjsLib) throw new Error('The PDF reader (PDF.js) did not load. Check your internet connection and reload the page.');
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const pdf = await window.pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+  let out = '';
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const content = await (await pdf.getPage(p)).getTextContent();
+    let line = '';
+    let lastY = null;
+    content.items.forEach(function (it) {
+      const y = Math.round(it.transform[5]);
+      if (lastY !== null && Math.abs(y - lastY) > 3) { out += line + '\n'; line = ''; }
+      lastY = y;
+      line += it.str + ' ';
+      if (it.hasEOL) { out += line + '\n'; line = ''; }
+    });
+    out += line + '\n';
+  }
+  return out;
+}
+
+const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+const MONTH_RE = '(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?';
+const MONEY_RE = /(?:PHP|Php|php|₱|P(?=\s?\d))\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?/;
+const LABELS = 'scholarship name|name of (?:the )?(?:scholarship|program|grant)|program name|provider|sponsor(?:ing)?(?: organization| agency)?|offered by|granted by|funded by|description|about(?: the scholarship)?|overview|background|eligibility(?: requirements)?|qualifications|who (?:may|can) apply|benefits|financial assistance|privileges|stipend|required documents|documentary requirements|documents? required|list of requirements|application requirements|requirements|documents|attachments|deadline|how to apply|application (?:procedure|process|instructions)|procedure|instructions|contact(?: us| details)?|renewal|notes?|link|website';
+
+function makeISO(y, m, d) {
+  if (m < 1 || m > 12 || d < 1 || d > 31) return '';
+  return y + '-' + pad(m) + '-' + pad(d);
+}
+
+function parseDateText(t) {
+  let m;
+  if ((m = t.match(/\b(20\d\d)-(\d{1,2})-(\d{1,2})\b/))) return makeISO(+m[1], +m[2], +m[3]);
+  if ((m = t.match(new RegExp('\\b' + MONTH_RE + '\\s+(\\d{1,2})(?:st|nd|rd|th)?,?\\s+(20\\d\\d)\\b', 'i')))) return makeISO(+m[3], MONTHS[m[1].toLowerCase()], +m[2]);
+  if ((m = t.match(new RegExp('\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?' + MONTH_RE + ',?\\s+(20\\d\\d)\\b', 'i')))) return makeISO(+m[3], MONTHS[m[2].toLowerCase()], +m[1]);
+  if ((m = t.match(/\b(\d{1,2})\/(\d{1,2})\/(20\d\d)\b/))) return makeISO(+m[3], +m[1], +m[2]);
+  return '';
+}
+
+function cleanBullet(line) {
+  return line.replace(/^\s*(?:[•·▪●○◦■□\-–—*]|\(?\d{1,2}[.)]|\(?[a-zA-Z][.)])\s+/, '').trim();
+}
+
+// Looks for a heading like "Eligibility:" and returns the text under it (an array of lines)
+function findSection(lines, labelList) {
+  const headStop = new RegExp('^\\s*(?:[IVX\\d]+[.)]\\s*)?(?:' + LABELS + ')\\b\\s*(?::|-|–)', 'i');
+  const bareHead = /^\s*(?:[IVX\d]+[.)]\s*)?(?:[A-Z][A-Za-z&\/ ,'-]{2,50}:|[A-Z][A-Z &\/'-]{3,50}:?)\s*$/;
+  for (let k = 0; k < labelList.length; k++) {
+    const re = new RegExp('^\\s*(?:[IVX\\d]+[.)]\\s*)?(?:' + labelList[k] + ')\\b\\s*(:|-|–)?\\s*(.*)$', 'i');
+    for (let i = 0; i < lines.length; i++) {
+      const m = lines[i].match(re);
+      if (!m || (!m[1] && m[2] !== '')) continue;
+      const out = m[2] ? [m[2]] : [];
+      for (let j = i + 1; j < lines.length && out.length < 25; j++) {
+        if (headStop.test(lines[j]) || bareHead.test(lines[j])) break;
+        out.push(lines[j]);
+      }
+      if (out.length) return out;
+    }
+  }
+  return null;
+}
+
+function labelValue(lines, labelRe) {
+  const re = new RegExp('^\\s*(?:' + labelRe + ')\\s*(?::|-|–)\\s*(.+)$', 'i');
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(re);
+    if (m) return m[1].trim();
+  }
+  return '';
+}
+
+function parseScholarshipText(text) {
+  const lines = text.split(/\n/).map(function (l) { return l.replace(/\s+/g, ' ').trim(); }).filter(Boolean);
+  const flat = lines.join('\n');
+  const notes = [];
+  const d = {
+    name: '', provider: '', type: '', description: '', courses: [], yearLevels: [], fields: [],
+    maxGWA: null, maxIncome: null, allowsExistingAid: true, benefits: '', benefitAmount: '',
+    documents: [], deadline: '', instructions: '', link: '', compliance: [], renewal: ''
+  };
+
+  // Name
+  d.name = labelValue(lines, 'scholarship name|name of (?:the )?(?:scholarship|program|grant)|program name|title');
+  if (!d.name) {
+    const guess = lines.slice(0, 12).find(function (l) {
+      return /(scholarship|grant|fellowship|financial assistance|assistance program)/i.test(l) && l.length >= 10 && l.length <= 120 && !/^(dear|this|please|we |the .* is)/i.test(l);
+    });
+    if (guess) { d.name = guess.replace(/^(subject|re)\s*:\s*/i, ''); notes.push('The scholarship name was guessed from the heading of the PDF.'); }
+  }
+
+  // Provider
+  d.provider = labelValue(lines, 'provider|scholarship provider|sponsor(?:ing)?(?: organization| agency)?|offered by|granted by|funded by|sponsored by|donor|grantor|source of funds');
+  if (!d.provider) {
+    const m = flat.match(/(?:offered|sponsored|granted|funded|administered|awarded) by (?:the )?([A-Za-z][^.\n,;]{3,80})/i);
+    if (m) d.provider = m[1].trim();
+  }
+
+  // Type (only when the provider or text clearly says so)
+  const ptext = d.provider + ' ' + flat;
+  if (/alumni/i.test(d.provider)) d.type = 'Alumni';
+  else if (/\b(CHED|DOST|DOLE|DSWD|DepEd|Commission on Higher Education|Department of|government|national|provincial|municipal|city of)\b/i.test(d.provider)) d.type = 'Government';
+  else if (/foundation|corporation|\binc\b|company|bank|group|holdings|private/i.test(d.provider)) d.type = 'Private';
+  else if (/University of the Philippines|\bUP\b|university|college/i.test(d.provider)) d.type = 'University';
+  else if (/\b(CHED|DOST|Commission on Higher Education)\b/i.test(ptext)) d.type = 'Government';
+
+  // Benefits and amount
+  const benSec = findSection(lines, ['benefits', 'financial assistance', 'financial benefits', 'privileges', 'stipend', 'grant']);
+  let benText = benSec ? benSec.map(cleanBullet).join('; ') : '';
+  if (!benText) {
+    const l = lines.find(function (x) { return MONEY_RE.test(x) && /(grant|stipend|allowance|tuition|assistance|per semester|monthly|scholar)/i.test(x); });
+    if (l) benText = l;
+  }
+  d.benefits = benText.slice(0, 300);
+  const mm = d.benefits.match(MONEY_RE);
+  if (mm) { d.benefitAmount = Number(mm[1].replace(/,/g, '')); notes.push('The amount per release was taken from the first peso figure in the benefits text.'); }
+
+  // Description
+  const descSec = findSection(lines, ['description', 'about(?: the scholarship)?', 'overview', 'background', 'introduction']);
+  if (descSec) d.description = descSec.join(' ').slice(0, 500);
+  else {
+    const para = lines.find(function (l, i) { return i > 0 && l.length >= 80 && !new RegExp('^(?:' + LABELS + ')\\b\\s*[:\\-–]', 'i').test(l); });
+    if (para) { d.description = para.slice(0, 500); notes.push('The description was taken from the first long paragraph of the PDF.'); }
+  }
+
+  // Eligibility text (courses, years, fields are searched here when a section exists)
+  const eligSec = findSection(lines, ['eligibility(?: requirements)?', 'qualifications', 'who (?:may|can) apply', 'qualified applicants', 'applicants must']);
+  const elig = eligSec ? eligSec.join(' ') : flat.replace(/\n/g, ' ');
+
+  // Courses
+  if (/\b(any|all) (?:degree )?(?:programs?|courses?|degrees?|disciplines)\b|open to all (?:students|programs|courses)/i.test(elig)) d.courses = ['Any'];
+  else d.courses = COURSES.filter(function (c) {
+    if (c === 'Other') return false;
+    const short = c.replace(/^(BS|BA) /, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp('\\b' + short + '\\b', 'i').test(elig);
+  });
+
+  // Year levels
+  let y = elig.toLowerCase().replace(/\bfirst\b|\bfreshm[ae]n\b/g, '1st').replace(/\bsecond\b|\bsophomores?\b/g, '2nd')
+    .replace(/\bthird\b|\bjuniors?\b/g, '3rd').replace(/\bfourth\b|\bseniors?\b/g, '4th').replace(/\bfifth\b/g, '5th');
+  if (/all year levels|any year level|all levels/.test(y)) d.yearLevels = YEARS.slice();
+  else {
+    const set = {};
+    let r;
+    const range = /([1-5])(?:st|nd|rd|th)?\s*(?:year)?\s*(?:to|-|–|up to|until|through)\s*([1-5])(?:st|nd|rd|th)?\s*year/g;
+    while ((r = range.exec(y))) { for (let n = +r[1]; n <= +r[2]; n++) set[n] = true; }
+    const single = /([1-5])(?:st|nd|rd|th)\s*year|\b([1-5])(?:st|nd|rd|th)\b/g;
+    while ((r = single.exec(y))) set[r[1] || r[2]] = true;
+    d.yearLevels = Object.keys(set).map(Number).sort();
+  }
+
+  // Field of study (only from an eligibility section)
+  if (eligSec) {
+    const fieldRules = [
+      ['Science & Mathematics', /science|mathematics|biolog|chemistry|physics/i],
+      ['Technology & Computing', /computer|information technology|computing|software|engineering/i],
+      ['Social Sciences', /social science|anthropolog|sociolog|psycholog/i],
+      ['Management & Economics', /management|economics|business|accountancy/i],
+      ['Arts & Humanities', /humanities|literature|communication arts|fine arts/i]
+    ];
+    if (/any field|all fields|regardless of (?:field|course)/i.test(elig)) d.fields = ['Any'];
+    else d.fields = fieldRules.filter(function (r2) { return r2[1].test(elig); }).map(function (r2) { return r2[0]; });
+  }
+
+  // GWA (UP scale: lower is better)
+  const g = flat.match(/(?:GWA|G\.W\.A\.?|general weighted average|weighted average|GPA)[^.\n]{0,80}?\b([1-5]\.\d{1,2})\b/i);
+  if (g) d.maxGWA = Number(g[1]);
+
+  // Family income (converted to monthly when the PDF says annual)
+  const inc = flat.match(/(?:family|household|parents?'?s?|gross)?[ \w]{0,20}income[^.\n]{0,100}?(?:PHP|Php|php|₱|P)\s?(\d{1,3}(?:,\d{3})+|\d+)/i);
+  if (inc) {
+    let amount = Number(inc[1].replace(/,/g, ''));
+    if (/annual|yearly|per year|per annum/i.test(inc[0])) { amount = Math.round(amount / 12); notes.push('The income limit in the PDF is annual, so it was divided by 12 to get a monthly figure.'); }
+    d.maxIncome = amount;
+  }
+
+  // Other scholarships / assistance
+  if (/no other scholarship|not (?:be )?(?:a )?(?:grantee|recipient|availing|receiving|enjoying)[^.\n]{0,60}(?:scholarship|financial assistance)|should not (?:be )?(?:enjoying|receiving)/i.test(flat)) d.allowsExistingAid = false;
+
+  // Required documents
+  const docSec = findSection(lines, ['required documents', 'documentary requirements', 'documents? required', 'list of requirements', 'application requirements', 'submit the following', 'documents? to (?:be )?submit(?:ted)?', 'attachments', 'documents']);
+  if (docSec) {
+    const seen = {};
+    d.documents = docSec.map(cleanBullet).filter(function (t) {
+      if (t.length < 3 || t.length > 150 || seen[t.toLowerCase()]) return false;
+      seen[t.toLowerCase()] = true;
+      return true;
+    });
+  }
+
+  // Deadline
+  for (let i = 0; i < lines.length && !d.deadline; i++) {
+    if (/deadline|on or before|not later than|until|submit(?:ted)? (?:on|by)|closing date|due date|last day/i.test(lines[i])) {
+      d.deadline = parseDateText(lines[i] + ' ' + (lines[i + 1] || ''));
+    }
+  }
+
+  // Instructions
+  const insSec = findSection(lines, ['how to apply', 'application procedure', 'application process', 'application instructions', 'procedure', 'instructions', 'mechanics']);
+  if (insSec) d.instructions = insSec.map(cleanBullet).join(' ').slice(0, 500);
+
+  // External link
+  const url = flat.match(/\bhttps?:\/\/[^\s<>"')]+/i) || flat.match(/\bwww\.[^\s<>"')]+/i);
+  if (url) { d.link = url[0].replace(/[.,;]+$/, ''); if (!/^https?:/i.test(d.link)) d.link = 'https://' + d.link; }
+
+  const checks = [
+    ['Scholarship name', d.name], ['Provider', d.provider], ['Description', d.description], ['Type', d.type],
+    ['Benefits', d.benefits], ['Eligible programs', d.courses.length], ['Year levels', d.yearLevels.length],
+    ['Field of study', d.fields.length], ['Required GWA', d.maxGWA !== null], ['Maximum family income', d.maxIncome !== null],
+    ['Required documents', d.documents.length], ['Deadline', d.deadline], ['Instructions', d.instructions], ['External link', d.link]
+  ];
+  const found = checks.filter(function (c) { return c[1]; }).map(function (c) { return c[0]; });
+  const missing = checks.filter(function (c) { return !c[1]; }).map(function (c) { return c[0]; });
+  return { data: d, found: found, missing: missing, notes: notes };
+}
+
+/* =====================================================================
+   8B. ACCOUNTS (UP MAIL), ROLES, ADMIN SCHOLARSHIP MANAGEMENT
+   Sign-in uses only the UP Mail address. There is NO real UP Mail password
+   and no connection to Google. One email = one account (the email is the user id).
+   Students choose "Student". Admin staff must also type the staff passcode.
+
+   IMPORTANT: this is a DEMONSTRATION sign-in for an MVP pitch. The passcode is
+   visible in this file and the database is open to the demo app, so it is NOT
+   secure. A real system needs proper authentication.
+   ===================================================================== */
+
 const ADMIN_PASSCODE = 'admin123';
 
-// Which pages each role may open
 const ROLE_PAGES = {
   student: ['dashboard', 'matching', 'marketplace', 'applications', 'tracking'],
-  admin: ['manage', 'adminapps', 'marketplace']
+  admin: ['manage', 'studentapps', 'marketplace']
 };
 
-let selectedRole = 'student';   // the role chosen on the sign-in screen
+let selectedRole = 'student';   // the account type chosen on the sign-in screen
+let registeringEmail = '';      // set while a first-time user fills in their profile
 
 function isAdmin() { return !!session && session.role === 'admin'; }
 function defaultPage() { return isAdmin() ? 'manage' : 'dashboard'; }
 function pageAllowed(name) { return !!session && ROLE_PAGES[session.role].includes(name); }
+function isUPMail(email) { return /^[^\s@]+@up\.edu\.ph$/i.test(email); }
 
 // ----- Sign-in screen -----
 function pickRole(role) {
@@ -1417,7 +1886,6 @@ function pickRole(role) {
     b.classList.toggle('selected', b.dataset.role === role);
   });
   $('login-admin-fields').classList.toggle('hidden', role !== 'admin');
-  $('login-name-label').textContent = role === 'admin' ? 'Staff name *' : 'Your name (optional)';
   showLoginError('');
 }
 
@@ -1428,60 +1896,136 @@ function showLoginError(message) {
   box.classList.remove('hidden');
 }
 
-function handleSignIn() {
-  const name = val('login-name').trim();
-  if (selectedRole === 'admin') {
-    if (!name) { showLoginError('Please enter your staff name.'); return; }
-    if (val('login-pass') !== ADMIN_PASSCODE) { showLoginError('Incorrect staff passcode.'); return; }
+function showLoginStep(step) {   // 'signin' or 'register'
+  $('login-signin').classList.toggle('hidden', step !== 'signin');
+  $('login-register').classList.toggle('hidden', step !== 'register');
+}
+
+async function handleSignIn() {
+  const email = val('login-email').trim().toLowerCase();
+  if (!isUPMail(email)) { showLoginError('Please enter your UP Mail address (it must end with @up.edu.ph).'); return; }
+  if (selectedRole === 'admin' && val('login-pass') !== ADMIN_PASSCODE) { showLoginError('Incorrect staff passcode.'); return; }
+
+  showLoginError('');
+  $('login-btn').disabled = true;
+  let user = null;
+  try { user = await store.get('users', email); }
+  catch (e) { showLoginError('Cannot reach the shared database: ' + (e.message || e)); $('login-btn').disabled = false; return; }
+  $('login-btn').disabled = false;
+
+  if (user) {
+    if (user.role !== selectedRole) {
+      showLoginError('This UP Mail is registered as ' + (user.role === 'admin' ? 'Admin Staff' : 'a Student') + '. Please choose the correct account type.');
+      return;
+    }
+    await completeSignIn(user);
+  } else {
+    openRegistration(email);   // first login: ask for the basic profile
   }
-  session = { role: selectedRole, name: name };
-  saveJSON(KEYS.session, session);
-  fillProfileForm();   // a student's sign-in name pre-fills the profile form
-  $('login-name').value = '';
+}
+
+function openRegistration(email) {
+  registeringEmail = email;
+  $('reg-email').value = email;
+  $('reg-name').value = '';
+  $('reg-number').value = '';
+  $('reg-course').value = '';
+  $('reg-year').value = '';
+  $('reg-position').value = '';
+  $('reg-student-fields').classList.toggle('hidden', selectedRole !== 'student');
+  $('reg-admin-fields').classList.toggle('hidden', selectedRole !== 'admin');
+  $('reg-title').textContent = 'Welcome! Create your ' + (selectedRole === 'admin' ? 'admin staff' : 'student') + ' profile';
+  $('reg-error').classList.add('hidden');
+  showLoginStep('register');
+}
+
+async function handleRegister() {
+  const errors = [];
+  const name = val('reg-name').trim();
+  if (!name) errors.push('Full name is required.');
+  if (selectedRole === 'student') {
+    if (!val('reg-course')) errors.push('Please select your course or degree program.');
+    if (!val('reg-year')) errors.push('Please select your year level.');
+  }
+  if (errors.length) { $('reg-error').textContent = errors.join(' '); $('reg-error').classList.remove('hidden'); return; }
+
+  const user = {
+    id: registeringEmail, email: registeringEmail, fullName: name, role: selectedRole,
+    registeredAt: new Date().toISOString(),
+    studentNumber: selectedRole === 'student' ? val('reg-number').trim() : '',
+    course: selectedRole === 'student' ? val('reg-course') : '',
+    yearLevel: selectedRole === 'student' ? Number(val('reg-year')) : null,
+    position: selectedRole === 'admin' ? val('reg-position').trim() : ''
+  };
+  try {
+    await store.put('users', user, true);      // fails if this email already has an account
+  } catch (e) {
+    if (e.message === 'DUPLICATE') {
+      showLoginStep('signin');
+      showLoginError('This UP Mail already has an account. Please sign in again.');
+    } else {
+      $('reg-error').textContent = 'Could not save your account: ' + (e.message || e);
+      $('reg-error').classList.remove('hidden');
+    }
+    return;
+  }
+  await completeSignIn(user, 'Account created. Welcome, ' + name + '!');
+}
+
+async function completeSignIn(user, message) {
+  currentUser = user;
+  session = { role: user.role, name: user.fullName, email: user.email };
+  saveJSON(KEYS.session, { email: user.email });
+  profile = user.profile || null;
+  matchingShown = false;
+  $('matching-results').innerHTML = '';
+  await refreshData();
+  fillProfileForm();
+  $('login-email').value = '';
   $('login-pass').value = '';
   showLoginError('');
+  showLoginStep('signin');
   showSessionScreen();
-  showToast('Signed in as ' + (isAdmin() ? 'Admin Staff' : 'Student') + (name ? ' (' + name + ')' : '') + '.');
+  showToast(message || ('Welcome back, ' + user.fullName + '!'));
 }
 
 function signOut() {
   session = null;
+  currentUser = null;
+  profile = null;
+  scholarships = [];
+  applications = [];
   saveJSON(KEYS.session, null);
   closeModal();
+  closePreview();
   closeMenu();
   editingAppId = null;
   editingScholarshipId = null;
   pickRole('student');
+  showLoginStep('signin');
   showSessionScreen();
   showToast('You have signed out.', 'info');
 }
 
-// Shows the sign-in screen when nobody is signed in, otherwise the app
 function showSessionScreen() {
-  if (!session) {
-    document.body.classList.add('logged-out');
-    return;
-  }
+  if (!session) { document.body.classList.add('logged-out'); return; }
   document.body.classList.remove('logged-out');
   applyRole();
   showPage(defaultPage());
 }
 
-// Shows only the navigation buttons that the signed-in role may use
+// Shows only the navigation buttons and controls that the signed-in role may use
 function applyRole() {
-  document.querySelectorAll('.nav-btn').forEach(function (b) {
-    const roles = (b.dataset.roles || '').split(' ');
-    b.classList.toggle('hidden', !roles.includes(session.role));
+  document.querySelectorAll('[data-roles]').forEach(function (b) {
+    b.classList.toggle('hidden', !b.dataset.roles.split(' ').includes(session.role));
   });
 }
 
-// Role label in the sidebar and the name chip in the top bar
 function renderRoleInfo() {
   if (!session) return;
   $('role-info').innerHTML = '<span class="badge">' + (isAdmin() ? 'Admin Staff' : 'Student') + '</span>' +
-    (session.name ? '<div class="role-name">' + esc(session.name) + '</div>' : '');
-  if (isAdmin()) $('student-chip').textContent = 'Admin: ' + (session.name || 'staff');
-  else $('student-chip').textContent = profile ? profile.name : (session.name || 'No profile yet');
+    '<div class="role-name">' + esc(session.name) + '</div><div class="role-email">' + esc(session.email) + '</div>';
+  $('student-chip').textContent = (isAdmin() ? 'Admin: ' : '') + session.name;
 }
 
 // ----- Admin: scholarship form helpers -----
@@ -1504,14 +2048,13 @@ function setChecked(name, values) {
   document.querySelectorAll('input[name="' + name + '"]').forEach(function (b) { b.checked = wanted.includes(b.value); });
 }
 
-// Builds the checkbox lists and the type dropdown of the admin form (runs once at start-up)
 function buildScholarshipFormChoices() {
   fillSelect('sch-type', TYPES, 'Select a type');
   $('sch-courses').innerHTML = checkGroupHTML('sch-course',
     [{ value: 'Any', label: 'Any program' }].concat(COURSES.filter(function (c) { return c !== 'Other'; }).map(function (c) { return { value: c, label: c }; })));
   $('sch-years').innerHTML = checkGroupHTML('sch-year', YEARS.map(function (y) { return { value: y, label: yearLabel(y) }; }));
   $('sch-fields').innerHTML = checkGroupHTML('sch-field',
-    [{ value: 'Any', label: 'Any' }].concat(INTERESTS.filter(function (i) { return i !== 'Undecided / Other'; }).map(function (i) { return { value: i, label: i }; })));
+    [{ value: 'Any', label: 'Any field' }].concat(INTERESTS.filter(function (i) { return i !== 'Undecided / Other'; }).map(function (i) { return { value: i, label: i }; })));
 }
 
 function showScholarshipForm(show) {
@@ -1527,29 +2070,39 @@ function showSchErrors(errors) {
   box.classList.remove('hidden');
 }
 
-// Opens the form empty (add) or filled with an existing listing (edit)
-function openScholarshipForm(id) {
+// Shows the original announcement PDF (a newly picked file, or the one saved with the listing)
+function renderSchPdfBox() {
+  const box = $('sch-pdf-box');
+  const s = editingScholarshipId ? findScholarship(editingScholarshipId) : null;
+  if (pendingAnnouncement) {
+    box.innerHTML = '<strong>Original announcement:</strong> ' + esc(pendingAnnouncement.name) + ' (' + fmtSize(pendingAnnouncement.size) + ') ' +
+      '<button type="button" class="btn btn-secondary btn-small" data-action="pending-pdf-view">View</button>' +
+      '<button type="button" class="btn btn-secondary btn-small" data-action="pending-pdf-download">Download</button>';
+  } else if (s && s.announcement) {
+    box.innerHTML = '<strong>Original announcement:</strong> ' + esc(s.announcement.name) + ' (' + fmtSize(s.announcement.size) + ') ' + fileButtons(s.announcement);
+  } else {
+    box.innerHTML = '<span class="muted">No announcement PDF is attached to this listing.</span>';
+  }
+}
+
+// Opens the form empty (add), with an existing listing (edit), or with extracted data (prefill)
+function openScholarshipForm(id, prefill, pendingFile, reviewHTML) {
   if (!isAdmin()) return;
   const s = id ? findScholarship(id) : null;
   editingScholarshipId = s ? s.id : null;
+  pendingAnnouncement = pendingFile || null;
   $('sch-form-title').textContent = s ? 'Edit Scholarship' : 'Add Scholarship';
-  $('sch-save-btn').textContent = s ? 'Save Scholarship' : 'Publish Scholarship';
-  $('sch-review-note').classList.add('hidden');
-  discardPendingAnn();
-  pendingAnn = s && s.announcementFileId ? { fileId: s.announcementFileId, name: s.announcementName || 'announcement.pdf', size: s.announcementSize || 0, isNew: false } : null;
-  renderAnnBox();
 
-  const d = s || {
-    name: '', provider: '', type: '', description: '', qualifications: [], courses: [], yearLevels: [], fields: [],
+  const d = prefill || s || {
+    name: '', provider: '', type: '', description: '', courses: [], yearLevels: [], fields: [],
     maxGWA: null, maxIncome: null, allowsExistingAid: true, benefits: '', benefitAmount: '',
     documents: [], deadline: '', instructions: '', link: '', compliance: [], renewal: ''
   };
   $('sch-name').value = d.name;
   $('sch-provider').value = d.provider;
-  $('sch-type').value = d.type;
+  $('sch-type').value = TYPES.includes(d.type) ? d.type : '';
   $('sch-deadline').value = d.deadline;
   $('sch-desc').value = d.description;
-  $('sch-qualifications').value = (d.qualifications || []).join('\n');
   setChecked('sch-course', d.courses);
   setChecked('sch-year', d.yearLevels);
   setChecked('sch-field', d.fields);
@@ -1564,8 +2117,15 @@ function openScholarshipForm(id) {
   $('sch-compliance').value = d.compliance.join('\n');
   $('sch-renewal').value = d.renewal;
 
+  const note = $('sch-review-note');
+  note.innerHTML = reviewHTML || '';
+  note.classList.toggle('hidden', !reviewHTML);
+  $('sch-publish-btn').textContent = s && s.published !== false ? 'Save Changes' : 'Publish Scholarship';
+  $('sch-draft-btn').classList.toggle('hidden', !!(s && s.published !== false));
+  renderSchPdfBox();
   showSchErrors([]);
   showScholarshipForm(true);
+  window.scrollTo(0, 0);
 }
 
 function readScholarshipForm() {
@@ -1579,7 +2139,6 @@ function readScholarshipForm() {
     type: val('sch-type'),
     deadline: val('sch-deadline'),
     description: val('sch-desc').trim(),
-    qualifications: linesOf(val('sch-qualifications')),
     courses: courses,
     yearLevels: checkedValues('sch-year').map(Number).sort(function (a, b) { return a - b; }),
     fields: fields,
@@ -1596,17 +2155,26 @@ function readScholarshipForm() {
   };
 }
 
-// Returns a list of error messages (empty list = valid)
-function validateScholarship(f) {
+// Publishing needs every required field. An unpublished draft only needs a name and provider.
+function validateScholarship(f, publish) {
   const errors = [];
   if (!f.name) errors.push('Scholarship name is required.');
   if (!f.provider) errors.push('Provider is required.');
-  if (!f.type) errors.push('Please select a scholarship type.');
-  if (!f.description) errors.push('Description is required.');
-  if (f.courses.length === 0) errors.push('Select at least one eligible program (or "Any program").');
-  if (f.yearLevels.length === 0) errors.push('Select at least one eligible year level.');
-  if (f.fields.length === 0) errors.push('Select at least one college (or "Any").');
 
+  if (publish) {
+    if (!f.type) errors.push('Please select a scholarship type.');
+    if (!f.description) errors.push('Description is required.');
+    if (f.courses.length === 0) errors.push('Select at least one eligible program (or "Any program").');
+    if (f.yearLevels.length === 0) errors.push('Select at least one eligible year level.');
+    if (f.fields.length === 0) errors.push('Select at least one field of study (or "Any field").');
+    if (!f.benefits) errors.push('Benefits text is required.');
+    const amount = Number(f.amountText);
+    if (f.amountText === '' || isNaN(amount) || amount < 0) errors.push('Amount per release must be a number (0 or higher).');
+    if (f.documents.length === 0) errors.push('List at least one required document (one per line).');
+    if (!f.instructions) errors.push('Application instructions are required.');
+    if (!f.deadline) errors.push('Application deadline is required.');
+    else if (editingScholarshipId === null && daysUntil(f.deadline) < 0) errors.push('The deadline of a new scholarship cannot be in the past.');
+  }
   if (f.gwaText !== '') {
     const g = Number(f.gwaText);
     if (isNaN(g) || g < 1 || g > 5) errors.push('Required GWA must be between 1.00 and 5.00 (or leave it blank).');
@@ -1615,16 +2183,6 @@ function validateScholarship(f) {
     const inc = Number(f.incomeText);
     if (isNaN(inc) || inc < 0) errors.push('Maximum family income must be 0 or higher (or leave it blank).');
   }
-  if (!f.benefits) errors.push('Benefits text is required.');
-  const amount = Number(f.amountText);
-  if (f.amountText === '' || isNaN(amount) || amount < 0) errors.push('Amount per release must be a number (0 or higher).');
-  if (f.documents.length === 0) errors.push('List at least one required document (one per line).');
-  if (!f.instructions) errors.push('Application instructions are required.');
-
-  if (!f.deadline) errors.push('Application deadline is required.');
-  else if (editingScholarshipId === null && daysUntil(f.deadline) < 0) errors.push('The deadline of a new scholarship cannot be in the past.');
-
-  // Only web links are allowed (this also blocks "javascript:" links)
   if (f.link && !/^https?:\/\/\S+$/i.test(f.link)) errors.push('The external link must start with http:// or https://');
 
   const duplicate = scholarships.some(function (s) {
@@ -1634,489 +2192,281 @@ function validateScholarship(f) {
   return errors;
 }
 
-function newScholarshipId() {
-  return scholarships.reduce(function (max, s) { return Math.max(max, s.id); }, 0) + 1;
-}
-
-function saveScholarship() {
-  if (!isAdmin()) return;
+// publish = true: the scholarship becomes visible to every student. false: saved as an unpublished draft.
+async function saveScholarship(publish) {
+  if (!isAdmin() || saving) return;
   const f = readScholarshipForm();
-  const errors = validateScholarship(f);
+  const errors = validateScholarship(f, publish);
   if (errors.length > 0) {
     showSchErrors(errors);
     showToast('Scholarship not saved. Please fix the errors.', 'error');
     return;
   }
 
+  const existing = editingScholarshipId ? findScholarship(editingScholarshipId) : null;
+  const wasPublished = !!existing && existing.published !== false;
+  if (publish && !wasPublished && !confirm('Publish this scholarship? It will immediately appear in the Scholarship Marketplace and Matching page for ALL students.\n\nHave you verified the details against the original PDF?')) return;
+
+  saving = true;
   const data = {
-    name: f.name,
-    provider: f.provider,
-    type: f.type,
-    description: f.description,
-    qualifications: f.qualifications,
-    courses: f.courses,
-    yearLevels: f.yearLevels,
+    name: f.name, provider: f.provider, type: f.type, description: f.description,
+    courses: f.courses, yearLevels: f.yearLevels,
     maxGWA: f.gwaText === '' ? null : Number(f.gwaText),
     maxIncome: f.incomeText === '' ? null : Number(f.incomeText),
-    fields: f.fields,
-    allowsExistingAid: f.allowsExistingAid,
-    benefits: f.benefits,
-    benefitAmount: Number(f.amountText),
-    documents: f.documents,
-    deadline: f.deadline,
-    instructions: f.instructions,
-    link: f.link,
-    compliance: f.compliance,
-    renewal: f.renewal || 'Not specified.'
+    fields: f.fields, allowsExistingAid: f.allowsExistingAid, benefits: f.benefits,
+    benefitAmount: f.amountText === '' ? 0 : Number(f.amountText),
+    documents: f.documents, deadline: f.deadline, instructions: f.instructions, link: f.link,
+    compliance: f.compliance, renewal: f.renewal || 'Not specified.',
+    published: publish || wasPublished
   };
-  if (pendingAnn) {
-    data.announcementFileId = pendingAnn.fileId;
-    data.announcementName = pendingAnn.name;
-    data.announcementSize = pendingAnn.size;
+
+  const s = existing || Object.assign({ id: Date.now(), isSample: false, createdBy: currentUser.email }, data);
+  if (existing) Object.assign(s, data);
+  if (publish && !wasPublished) s.publishedAt = new Date().toISOString();
+
+  // Upload the original announcement PDF (if a new one was attached)
+  if (pendingAnnouncement) {
+    const path = 'announcements/' + s.id + '-' + Date.now() + '-' + safeName(pendingAnnouncement.name);
+    try { await store.upload(path, pendingAnnouncement); }
+    catch (e) { saving = false; showToast('Could not upload the announcement PDF: ' + (e.message || e), 'error'); return; }
+    if (s.announcement) store.removeFiles([s.announcement.path]);
+    s.announcement = { name: pendingAnnouncement.name, type: 'application/pdf', size: pendingAnnouncement.size, path: path };
   }
 
-  const existing = editingScholarshipId ? findScholarship(editingScholarshipId) : null;
-  if (existing) {
-    Object.assign(existing, data);
-  } else {
-    scholarships.push(Object.assign({ id: newScholarshipId(), isSample: false }, data));
-  }
+  const ok = await persistScholarship(s);
+  saving = false;
+  if (!ok) return;
+  if (!existing) scholarships.push(s);
 
-  saveScholarships();
-  pendingAnn = null;   // the PDF now belongs to the saved scholarship
+  pendingAnnouncement = null;
   editingScholarshipId = null;
+  clearAnnouncementPicker();
   renderAll();
   showScholarshipForm(false);
-  showToast(existing ? 'Scholarship updated.' : 'Scholarship published. Students can now see it in the Marketplace and Matching pages.');
+  showToast(s.published ? 'Scholarship published. Students can now see it in the Marketplace.' : 'Scholarship saved as an unpublished draft.');
 }
 
-function deleteScholarship(id) {
+async function toggleScholarship(id) {
+  const s = findScholarship(id);
+  if (!s || !isAdmin()) return;
+  const publishing = s.published === false;
+  if (publishing && (!s.deadline || !s.documents.length || !s.type)) { showToast('Complete the listing (Edit) before publishing it.', 'error'); return; }
+  s.published = publishing;
+  if (!(await persistScholarship(s))) { s.published = !publishing; return; }
+  renderAll();
+  showToast(publishing ? 'Scholarship published.' : 'Scholarship unpublished. Students can no longer see it.');
+}
+
+async function deleteScholarship(id) {
   if (!isAdmin()) return;
   const s = findScholarship(id);
   if (!s) return;
   const count = applications.filter(function (a) { return a.scholarshipId === id; }).length;
-  if (count > 0) {
-    showToast('Cannot delete: ' + count + ' application' + (count === 1 ? '' : 's') + ' exist for this scholarship.', 'error');
-    return;
-  }
+  if (count > 0) { showToast('Cannot delete: ' + count + ' application' + (count === 1 ? '' : 's') + ' exist for this scholarship.', 'error'); return; }
   if (!confirm('Delete the scholarship "' + s.name + '"? This cannot be undone.')) return;
-  deleteFile(s.announcementFileId);
+  if (!(await safe(store.del('scholarships', id), 'Could not delete the scholarship'))) return;
+  if (s.announcement) store.removeFiles([s.announcement.path]);
   scholarships = scholarships.filter(function (x) { return x.id !== id; });
-  saveScholarships();
   renderAll();
   showToast('Scholarship deleted.');
 }
 
-// Admin page: summary cards and the list of all listings
-function renderManage() {
-  const openCount = scholarships.filter(function (s) { return !isClosed(s); }).length;
-  $('admin-stats').innerHTML =
-    statCard('Scholarship listings', scholarships.length, 'total', '') +
-    statCard('Open for applications', openCount, 'deadline not yet passed', 'green') +
-    statCard('Closed', scholarships.length - openCount, 'deadline passed', '') +
-    statCard('Student applications', applications.length, 'saved in this browser', 'gold');
+// ----- Admin: upload announcement PDF and extract -----
+function clearAnnouncementPicker() {
+  announcementFile = null;
+  $('ann-file').value = '';
+  $('ann-filename').textContent = 'No file chosen';
+  $('ann-extract-btn').disabled = true;
+  $('ann-status').classList.add('hidden');
+}
 
-  const sorted = scholarships.slice().sort(function (a, b) { return a.deadline.localeCompare(b.deadline); });
+function showAnnStatus(message, type) {
+  const box = $('ann-status');
+  box.className = 'alert alert-' + (type || 'info');
+  box.textContent = message;
+}
+
+function handleAnnouncementPicked(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  if (extOf(file.name) !== 'pdf' || (file.type && file.type !== 'application/pdf')) {
+    clearAnnouncementPicker();
+    showAnnStatus('Please choose a PDF file (.pdf).', 'error');
+    return;
+  }
+  if (file.size > 10 * 1024 * 1024) { clearAnnouncementPicker(); showAnnStatus('The PDF is larger than 10 MB.', 'error'); return; }
+  announcementFile = file;
+  $('ann-filename').textContent = file.name + ' (' + fmtSize(file.size) + ')';
+  $('ann-extract-btn').disabled = false;
+  $('ann-status').classList.add('hidden');
+}
+
+async function extractAnnouncement() {
+  if (!announcementFile) return;
+  const file = announcementFile;
+  $('ann-extract-btn').disabled = true;
+  showAnnStatus('Reading the PDF... please wait.', 'info');
+  let text = '';
+  try { text = await pdfToText(file); }
+  catch (e) {
+    console.error(e);
+    showAnnStatus('Could not read this PDF automatically (' + (e.message || e) + '). You can enter the details manually.', 'error');
+    $('ann-extract-btn').disabled = false;
+    openScholarshipForm(null, null, file, '<strong>Manual entry needed.</strong> The PDF could not be read. Please type the scholarship details yourself. The PDF will be attached to the listing.');
+    return;
+  }
+  $('ann-extract-btn').disabled = false;
+
+  if (text.replace(/\s/g, '').length < 60) {
+    showAnnStatus('This PDF seems to be scanned or made of images, so no selectable text was found.', 'warn');
+    openScholarshipForm(null, null, file,
+      '<strong>No text found.</strong> This PDF looks scanned or image-based, so automatic extraction may not work. Please enter the information manually. The PDF will still be attached to the listing.');
+    return;
+  }
+
+  const r = parseScholarshipText(text);
+  showAnnStatus('Done. Review the extracted details below before publishing.', 'ok');
+  const html = '<strong>Please verify everything against the original PDF before publishing.</strong> ' +
+    'The details below were extracted automatically and may be wrong or incomplete. Nothing is published until you click "Publish Scholarship".' +
+    '<br><strong>Found:</strong> ' + (r.found.length ? esc(r.found.join(', ')) : 'nothing') + '.' +
+    '<br><strong>Not found (left blank):</strong> ' + (r.missing.length ? esc(r.missing.join(', ')) : 'none') + '.' +
+    (r.notes.length ? '<br><strong>Notes:</strong> ' + esc(r.notes.join(' ')) : '');
+  openScholarshipForm(null, r.data, file, html);
+}
+
+// Admin page: summary cards, upload box and the list of all listings
+function renderManage() {
+  if (!isAdmin()) return;
+  const published = scholarships.filter(function (s) { return s.published !== false; });
+  const openCount = published.filter(function (s) { return !isClosed(s); }).length;
+  $('admin-stats').innerHTML =
+    statCard('Scholarship listings', scholarships.length, (scholarships.length - published.length) + ' unpublished', '') +
+    statCard('Open for applications', openCount, 'published, deadline not passed', 'green') +
+    statCard('Closed', published.length - openCount, 'deadline passed', '') +
+    statCard('Submitted applications', applications.filter(function (a) { return a.status !== 'Draft'; }).length, 'from all students', 'gold');
+
+  const sorted = scholarships.slice().sort(function (a, b) { return (a.deadline || '9').localeCompare(b.deadline || '9'); });
   if (sorted.length === 0) {
-    $('sch-list').innerHTML = '<div class="card"><p>There are no scholarship listings yet.</p><p class="muted">Click "Add Scholarship" to create the first one.</p></div>';
+    $('sch-list').innerHTML = '<div class="card"><p>There are no scholarship listings yet.</p><p class="muted">Upload an announcement PDF above or click "Add Scholarship".</p></div>';
     return;
   }
   $('sch-list').innerHTML = sorted.map(function (s) {
-    const appCount = applications.filter(function (a) { return a.scholarshipId === s.id; }).length;
+    const isPub = s.published !== false;
+    const appCount = applications.filter(function (a) { return a.scholarshipId === s.id && a.status !== 'Draft'; }).length;
     return '<div class="card app-card">' +
-      '<div class="app-head"><div><div class="badges"><span class="badge badge-gray">' + esc(s.type) + '</span>' + '</div>' +
+      '<div class="app-head"><div><div class="badges"><span class="badge badge-gray">' + esc(s.type || 'No type') + '</span>' +
+      (isPub ? '<span class="badge badge-green">Published</span>' : '<span class="badge badge-amber">Unpublished draft</span>') + '</div>' +
       '<h4 class="sch-title">' + esc(s.name) + '</h4><div class="sch-provider">' + esc(s.provider) + '</div></div>' +
       '<div>' + deadlineBadge(s.deadline) + '</div></div>' +
       '<div class="app-meta">' +
         '<div><span>Deadline</span>' + formatDate(s.deadline) + '</div>' +
-        '<div><span>Benefits</span>' + esc(s.benefits) + '</div>' +
+        '<div><span>Benefits</span>' + esc(s.benefits || '-') + '</div>' +
         '<div><span>Applications received</span>' + appCount + '</div>' +
       '</div>' +
       '<div class="card-actions">' +
         '<button class="btn btn-secondary btn-small" data-action="view" data-id="' + s.id + '">View Details</button>' +
         '<button class="btn btn-primary btn-small" data-action="admin-edit" data-id="' + s.id + '">Edit</button>' +
+        '<button class="btn btn-secondary btn-small" data-action="sch-toggle" data-id="' + s.id + '">' + (isPub ? 'Unpublish' : 'Publish') + '</button>' +
+        (s.announcement ? fileButtons(s.announcement).replace(/>Preview</g, '>View PDF<').replace(/>Download</g, '>Download PDF<') : '') +
         '<button class="btn btn-danger btn-small" data-action="sch-delete" data-id="' + s.id + '">Delete</button>' +
       '</div></div>';
   }).join('');
 }
 
-
 /* =====================================================================
-   8C. ADMIN: PDF ANNOUNCEMENT EXTRACTION AND STUDENT APPLICATION REVIEW
+   8C. ADMIN - STUDENT APPLICATIONS (review and document verification)
    ===================================================================== */
 
-/*==EXTRACT-START== (plain text functions, no page access; easy to test) */
-const HEADING_RE = /^(description|about( the (scholarship|program))?|overview|background|purpose|eligibility( requirements| criteria)?|qualifications?|who (may|can) apply|qualified applicants|benefits?|financial assistance|privileges|required documents?|documents? (required|needed|to submit|to be submitted)|documentary requirements?|application requirements?|requirements|how to apply|application (procedure|process|instructions?|guidelines)|procedure|instructions?|deadline|application deadline|closing date|contact( information)?|selection criteria|scholarship (name|title|type|provider)|name of (the )?scholarship|provider|sponsor|type|link|website|for more information|note|notes|terms and conditions)\b/i;
-const YEAR_WORDS = { first: 1, '1st': 1, second: 2, '2nd': 2, third: 3, '3rd': 3, fourth: 4, '4th': 4, fifth: 5, '5th': 5 };
-const MONTHS = { january: 1, jan: 1, february: 2, feb: 2, march: 3, mar: 3, april: 4, apr: 4, may: 5, june: 6, jun: 6, july: 7, jul: 7,
-  august: 8, aug: 8, september: 9, sept: 9, sep: 9, october: 10, oct: 10, november: 11, nov: 11, december: 12, dec: 12 };
-// Built from the COURSES list above, so changing COURSES also updates PDF extraction.
-// A course is matched by its name without the degree prefix (e.g. "Data Science").
-// Ambiguous names ("English") and names shared by two degrees (the two Sport Science degrees) must appear WITH their prefix, e.g. "BA English".
-function courseRegex(course) {
-  const esc2 = function (t) { return t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); };
-  const plain = course.replace(/^(BS|BA|AA|B|AB)\s+/, '');
-  const shared = COURSES.filter(function (c) { return c.replace(/^(BS|BA|AA|B|AB)\s+/, '') === plain; }).length > 1;
-  if (shared || /^English$/i.test(plain)) return new RegExp('\\b' + esc2(course).replace(/\s+/g, '\\s+') + '\\b', 'i');
-  let re = esc2(plain).replace(/\s+/g, '\\s+').replace(/\band\b/gi, '(?:and|&)');
-  if (/Computer Science/i.test(plain)) re += '|\\bBSCS\\b';
-  if (/Communication and Media Arts/i.test(plain)) re += '|communication\\s+arts';
-  return new RegExp(re, 'i');
+const REVIEW_STATUSES = ['Submitted', 'Under Review', 'Verified', 'Incomplete', 'Approved', 'Rejected'];
+
+function showSaDetail(show) {
+  $('sa-list-view').classList.toggle('hidden', show);
+  $('sa-detail-view').classList.toggle('hidden', !show);
+  if (!show) reviewingAppId = null;
 }
 
-function isHeading(l) {
-  if (!l || l.length > 90) return false;
-  const i = l.indexOf(':');
-  if (i > 0 && i <= 40 && HEADING_RE.test(l.slice(0, i).trim())) return true;
-  return /^[A-Z0-9 &\/()-]{4,60}$/.test(l) && HEADING_RE.test(l);
-}
-function cleanBullet(l) { return l.replace(/^([-\u2022*\u00b7\u25cf\u25aa]|\d+[.)]|[a-zA-Z][.)])\s+/, '').trim(); }
+function renderStudentApps() {
+  if (!isAdmin()) return;
+  const status = val('sa-status');
+  const search = val('sa-search').trim().toLowerCase();
+  const all = applications.filter(function (a) { return a.status !== 'Draft'; });
+  const list = all.filter(function (a) {
+    if (status && a.status !== status) return false;
+    if (search && !((a.name || '').toLowerCase().includes(search) || (a.studentEmail || '').toLowerCase().includes(search) || (a.scholarshipName || '').toLowerCase().includes(search))) return false;
+    return true;
+  }).sort(function (a, b) { return (b.submittedAt || '').localeCompare(a.submittedAt || '') || b.id - a.id; });
 
-// Finds a heading (like "Eligibility:") and returns the lines under it
-function getSection(lines, re) {
-  const withText = new RegExp('^(?:[0-9]+[.)]\\s*)?(?:' + re.source + ')\\s*[:\\-\u2013]\\s*(.*)$', 'i');
-  const bare = new RegExp('^(?:[0-9]+[.)]\\s*)?(?:' + re.source + ')\\s*:?\\s*$', 'i');
-  for (let i = 0; i < lines.length; i++) {
-    let first = null;
-    const m = lines[i].match(withText);
-    if (m) first = m[1]; else if (bare.test(lines[i])) first = '';
-    if (first === null) continue;
-    const out = first ? [first] : [];
-    for (let j = i + 1; j < lines.length; j++) {
-      const l = lines[j];
-      if (l === '') {
-        if (out.length && !/^([-\u2022*\u00b7\u25cf]|\d+[.)]|[a-zA-Z][.)])\s+/.test(lines[j + 1] || '')) break;
-        continue;
-      }
-      if (isHeading(l)) break;
-      out.push(l);
-    }
-    if (out.length) return out;
-  }
-  return [];
-}
-
-function parseDateText(t) {
-  const names = Object.keys(MONTHS).sort(function (a, b) { return b.length - a.length; }).join('|');
-  let y, mo, d, m;
-  if ((m = t.match(new RegExp('\\b(' + names + ')\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?,?\\s+(\\d{4})', 'i')))) { mo = MONTHS[m[1].toLowerCase()]; d = +m[2]; y = +m[3]; }
-  else if ((m = t.match(new RegExp('\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?(' + names + ')\\.?,?\\s+(\\d{4})', 'i')))) { d = +m[1]; mo = MONTHS[m[2].toLowerCase()]; y = +m[3]; }
-  else if ((m = t.match(/\b(\d{4})-(\d{2})-(\d{2})\b/))) { y = +m[1]; mo = +m[2]; d = +m[3]; }
-  else if ((m = t.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/))) { mo = +m[1]; d = +m[2]; y = +m[3]; }
-  else return '';
-  if (mo < 1 || mo > 12 || d < 1 || d > 31 || y < 2000 || y > 2100) return '';
-  return y + '-' + String(mo).padStart(2, '0') + '-' + String(d).padStart(2, '0');
-}
-
-function parseYears(text) {
-  if (/all year levels?|any year level|all years|regardless of (the )?year/i.test(text)) return [1, 2, 3, 4, 5];
-  const o = '(first|second|third|fourth|fifth|[1-5](?:st|nd|rd|th))';
-  const set = new Set();
-  let m;
-  const range = new RegExp(o + '\\s*(?:year)?\\s*(?:to|-|\u2013|through|up to)\\s*' + o, 'ig');
-  while ((m = range.exec(text))) { for (let k = YEAR_WORDS[m[1].toLowerCase()]; k <= YEAR_WORDS[m[2].toLowerCase()]; k++) set.add(k); }
-  const above = new RegExp(o + '[\\s-]*year\\s*(?:and|&)\\s*(?:above|up|onwards?|higher)', 'ig');
-  while ((m = above.exec(text))) { for (let k = YEAR_WORDS[m[1].toLowerCase()]; k <= 5; k++) set.add(k); }
-  const single = new RegExp('\\b' + o + '\\b', 'ig');
-  while ((m = single.exec(text))) set.add(YEAR_WORDS[m[1].toLowerCase()]);
-  return Array.from(set).sort();
-}
-
-function guessType(text) {
-  if (/alumni/i.test(text)) return 'Alumni';
-  if (/government|\bCHED\b|\bDOST\b|\bDepEd\b|\bDSWD\b|\bTESDA\b|\bLGU\b|province of|city of|municipal|department of|commission on/i.test(text)) return 'Government';
-  if (/universit|\bUP\b|college|campus|institute/i.test(text)) return 'University';
-  if (/foundation|corporation|company|\binc\b|bank|group|private|association|club|council/i.test(text)) return 'Private';
-  return '';
-}
-
-// Takes the text lines of a PDF and returns whatever could be identified.
-// Anything not found stays blank ('' or []). Nothing is invented.
-function extractScholarshipInfo(lines) {
-  const flat = lines.filter(Boolean).join(' ');
-  const all = lines.join('\n');
-  const r = { name: '', provider: '', type: '', description: '', qualifications: [], courses: [], yearLevels: [], gwa: '', income: '',
-    allowsAid: null, benefits: '', amount: '', documents: [], deadline: '', instructions: '', link: '', notes: [] };
-  const text = function (re) { return getSection(lines, re).join(' ').trim(); };
-  const amountRe = /(?:\b(?:PHP|Php|PhP|P)|\u20b1)\s?([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)/;
-
-  // Name
-  r.name = text(/(?:name of (?:the )?scholarship|scholarship (?:name|title)|program name|title)/);
-  if (!r.name) {
-    const subj = lines.find(function (l) { return /^(subject|re)\s*[:\-\u2013]/i.test(l); });
-    if (subj) r.name = subj.replace(/^[^:\-\u2013]+[:\-\u2013]\s*/, '').replace(/^(announcement|call for applications?)\s*(of|for|:)?\s*/i, '');
-  }
-  if (!r.name) {
-    r.name = lines.filter(Boolean).slice(0, 12).find(function (l) {
-      return /scholarship|grant|bursary|educational assistance|fellowship|award/i.test(l) && l.length <= 120 && !/[.]$/.test(l) && !/^(to|from|date|attention|cc)\s*:/i.test(l);
-    }) || '';
-  }
-  r.name = r.name.replace(/^["\u201c'\u2018]|["\u201d'\u2019]$/g, '').trim();
-
-  // Provider and type
-  r.provider = text(/(?:scholarship provider|provider|sponsor(?:ing)?(?: organization| agency| institution)?|offered by|funded by|granting (?:agency|institution)|donor|issued by)/);
-  if (!r.provider) { const pm = flat.match(/\b(?:offered|sponsored|funded|granted) by (?:the )?([A-Z][^.,;:]{3,80})/); if (pm) r.provider = pm[1].trim(); }
-  r.type = guessType(text(/(?:scholarship )?type|category/)) || guessType(r.provider + ' ' + r.name);
-
-  // Description (+ eligibility statements)
-  r.description = text(/(?:scholarship )?description|about(?: the scholarship| the program)?|overview|background|purpose/);
-  if (!r.description) {
-    const sent = (flat.match(/[^.!?]*\b(?:scholarship|grant|assistance)\b[^.!?]*[.!?]/g) || []).find(function (s) { return s.length > 40 && !/:/.test(s); });
-    if (sent) r.description = sent.trim().slice(0, 300);
-  }
-  const elig = getSection(lines, /(?:eligibility(?: requirements| criteria)?|qualifications?|who (?:may|can) apply|qualified applicants)/).map(cleanBullet);
-  r.qualifications = elig.filter(function (q) { return q.length > 2; });
-  r.description = r.description.slice(0, 900);
-
-  // Benefits and amount
-  r.benefits = text(/(?:benefits?|financial assistance|privileges|financial (?:benefits|grant)|allowance|stipend)/);
-  let am = r.benefits.match(amountRe);
-  if (!am) {
-    const al = lines.find(function (l) { return /benefit|allowance|stipend|grant|assistance|tuition|financial/i.test(l) && amountRe.test(l); });
-    if (al) { am = al.match(amountRe); if (!r.benefits) r.benefits = cleanBullet(al); }
-  }
-  if (am) r.amount = am[1].replace(/,/g, '');
-
-  // Eligibility details (use the eligibility section when there is one)
-  const src = elig.length ? elig : lines;
-  const srcText = src.join(' ');
-  r.courses = COURSES.filter(function (c) { return courseRegex(c).test(srcText); });
-  if (r.courses.length === 0 && /all (?:degree )?(?:courses|programs|degrees)|any (?:degree )?(?:course|program)/i.test(srcText)) r.courses = ['Any'];
-  let yearSrc = src.filter(function (l) { return /\b(year|yr)\b/i.test(l); }).join(' ');
-  if (!yearSrc && elig.length) yearSrc = lines.filter(function (l) { return /\b(year|yr)\b/i.test(l); }).join(' ');
-  r.yearLevels = parseYears(yearSrc);
-
-  const g = flat.match(/(?:GWA|general weighted average|weighted average|GPA)[^0-9]{0,60}?([1-5](?:\.\d{1,2})?)(?![0-9%])/i);
-  if (g) r.gwa = g[1];
-  for (let i = 0; i < lines.length; i++) {
-    if (/income/i.test(lines[i]) && amountRe.test(lines[i])) {
-      let v = Number(lines[i].match(amountRe)[1].replace(/,/g, ''));
-      if (/annual|per year|yearly|a year/i.test(lines[i])) { v = Math.round(v / 12); r.notes.push('The family income limit was written as an annual amount, so it was divided by 12 to get a monthly figure. Please check it.'); }
-      r.income = String(v);
-      break;
-    }
-  }
-  if (/\b(?:not|no)\b[^.\n]{0,40}(?:recipient|receiving|availing|beneficiar|enjoying)[^.\n]{0,60}(?:scholarship|assistance|grant)/i.test(flat)) r.allowsAid = false;
-
-  // Documents, deadline, instructions, link
-  r.documents = getSection(lines, /(?:required documents?|documents? (?:required|needed|to submit|to be submitted)|documentary requirements?|application requirements?|requirements|submit the following)/)
-    .map(cleanBullet).filter(function (d) { return d.length > 2 && d.length <= 150; });
-  if (r.documents.length === 1 && /;/.test(r.documents[0])) r.documents = r.documents[0].split(';').map(function (d) { return d.trim(); }).filter(Boolean);
-
-  r.deadline = parseDateText(text(/(?:application )?deadline|closing date|last day (?:of|for) (?:filing|submission|application)|submission deadline|due date/));
-  if (!r.deadline) {
-    for (let i = 0; i < lines.length && !r.deadline; i++) {
-      if (/deadline|on or before|not later than|until|closing|due/i.test(lines[i])) r.deadline = parseDateText(lines[i]);
-    }
-  }
-  r.instructions = getSection(lines, /(?:how to apply|application (?:procedure|process|instructions?|guidelines)|procedure|instructions?|mode of application)/).map(cleanBullet).join('\n');
-
-  const lm = all.match(/https?:\/\/[^\s<>"')]+|www\.[^\s<>"')]+/i);
-  if (lm) { r.link = lm[0].replace(/[.,;]+$/, ''); if (/^www\./i.test(r.link)) r.link = 'https://' + r.link; }
-  return r;
-}
-/*==EXTRACT-END==*/
-
-// ----- Reading the PDF with PDF.js -----
-const PDFJS_VERSION = '3.11.174';
-let annFile = null;        // the PDF chosen in the upload box
-let pdfWorkerReady = false;
-let pendingAnn = null;     // the announcement attached to the scholarship form: { fileId, name, size, isNew }
-
-function pdfLibReady() { return typeof pdfjsLib !== 'undefined'; }
-
-async function readPdfLines(file) {
-  // The worker is loaded through a small blob so it also works when the page is opened from a file
-  if (!pdfWorkerReady) {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob(
-      ['importScripts("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/' + PDFJS_VERSION + '/pdf.worker.min.js");'], { type: 'text/javascript' }));
-    pdfWorkerReady = true;
-  }
-  const task = pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
-  const pdf = await task.promise;
-  const lines = [];
-  for (let p = 1; p <= Math.min(pdf.numPages, 20); p++) {
-    const content = await (await pdf.getPage(p)).getTextContent();
-    let line = '', lastY = null, lastH = 10;
-    content.items.forEach(function (it) {
-      if (typeof it.str !== 'string') return;
-      const y = it.transform[5];
-      if (lastY !== null && Math.abs(y - lastY) > 2) {
-        lines.push(line.replace(/\s+/g, ' ').trim());
-        if (lastY - y > lastH * 1.7) lines.push('');   // bigger gap = new paragraph
-        line = '';
-      }
-      line += it.str;
-      lastY = y;
-      lastH = it.height || lastH;
-    });
-    lines.push(line.replace(/\s+/g, ' ').trim(), '');
-  }
-  if (task.destroy) task.destroy();   // free the memory used by this PDF
-  return lines;
-}
-
-function showAnnMsg(type, html) {
-  const box = $('ann-msg');
-  box.className = 'alert alert-' + type;
-  box.innerHTML = html;
-}
-
-function onAnnFileChosen(input) {
-  annFile = input.files[0] || null;
-  $('ann-filename').textContent = annFile ? 'Chosen file: ' + annFile.name + ' (' + sizeText(annFile.size) + ')' : 'No file chosen.';
-  $('ann-extract').disabled = !annFile;
-  $('ann-msg').className = 'alert hidden';
-}
-
-// "Extract Scholarship Information" button
-async function extractFromPdf() {
-  if (!isAdmin() || !annFile) return;
-  const problem = checkUpload(annFile, true);
-  if (problem) { showAnnMsg('error', esc(problem)); return; }
-  if (!pdfLibReady()) {
-    showAnnMsg('warn', 'The PDF reader (PDF.js) could not be loaded. Check your internet connection and reload the page, or click "+ Add Scholarship" and type the details manually.');
-    return;
-  }
-  const btn = $('ann-extract');
-  btn.disabled = true;
-  btn.textContent = 'Reading PDF...';
-  try {
-    const lines = await readPdfLines(annFile);
-    const fileId = await saveFile(annFile);
-    const scanned = lines.join('').replace(/\s/g, '').length < 50;
-    const result = scanned ? null : extractScholarshipInfo(lines);
-
-    openScholarshipForm();                    // empty Add Scholarship form
-    pendingAnn = { fileId: fileId, name: annFile.name, size: annFile.size, isNew: true };
-    renderAnnBox();
-    if (result) fillFormFromExtraction(result);
-    showReviewNote(result);
-    $('ann-msg').className = 'alert hidden';
-    window.scrollTo(0, 0);
-  } catch (e) {
-    showAnnMsg('error', 'Sorry, this PDF could not be read. It may be damaged or password-protected. You can click "+ Add Scholarship" and enter the details manually.');
-  } finally {
-    btn.textContent = 'Extract Scholarship Information';
-    btn.disabled = !annFile;
-  }
-}
-
-function fillFormFromExtraction(r) {
-  $('sch-name').value = r.name;
-  $('sch-provider').value = r.provider;
-  if (TYPES.includes(r.type)) $('sch-type').value = r.type;
-  $('sch-deadline').value = r.deadline;
-  $('sch-desc').value = r.description;
-  $('sch-qualifications').value = r.qualifications.join('\n');
-  setChecked('sch-course', r.courses);
-  setChecked('sch-year', r.yearLevels);
-  $('sch-gwa').value = r.gwa;
-  $('sch-income').value = r.income;
-  if (r.allowsAid === false) $('sch-aid').checked = false;
-  $('sch-benefits').value = r.benefits;
-  $('sch-amount').value = r.amount;
-  $('sch-docs').value = r.documents.join('\n');
-  $('sch-instructions').value = r.instructions;
-  $('sch-link').value = r.link;
-}
-
-// The reminder at the top of the form after an extraction
-function showReviewNote(r) {
-  const box = $('sch-review-note');
-  let html;
-  if (!r) {
-    html = '<strong>No readable text found.</strong> This PDF looks scanned or image-based, so automatic extraction may not work. ' +
-      'The original PDF is attached below. Please read it and enter the scholarship details manually.';
-  } else {
-    const found = [r.name, r.provider, r.type, r.description, r.qualifications.length, r.courses.length, r.yearLevels.length, r.gwa, r.income,
-      r.benefits, r.amount, r.documents.length, r.deadline, r.instructions, r.link].filter(function (x) { return x; }).length;
-    html = '<strong>Please review before publishing.</strong> The app filled in ' + found + ' of 15 details it could identify from the PDF. ' +
-      'Automatic reading can make mistakes, so <strong>verify every field against the original PDF</strong> (view it below). ' +
-      'Blank fields were not found. College, compliance and renewal are never filled in automatically. ' +
-      'The scholarship is <strong>not published</strong> until you click "Publish Scholarship".' +
-      (r.notes.length ? '<ul>' + r.notes.map(function (n) { return '<li>' + esc(n) + '</li>'; }).join('') + '</ul>' : '');
-  }
-  box.innerHTML = html;
-  box.classList.remove('hidden');
-}
-
-// Shows the attached announcement PDF in the form with View / Download buttons
-function renderAnnBox() {
-  const box = $('sch-pdf-box');
-  if (!pendingAnn) { box.innerHTML = ''; box.classList.add('hidden'); return; }
-  box.innerHTML = '<div class="field full"><label>Original announcement (kept for reference)</label>' +
-    docRowsHTML([{ name: 'Scholarship announcement PDF', fileId: pendingAnn.fileId, fileName: pendingAnn.name, fileSize: pendingAnn.size }], false) + '</div>';
-  box.classList.remove('hidden');
-}
-
-// Throws away an announcement that was uploaded but never published
-function discardPendingAnn() {
-  if (pendingAnn && pendingAnn.isNew) deleteFile(pendingAnn.fileId);
-  pendingAnn = null;
-}
-
-function cancelScholarshipForm() {
-  discardPendingAnn();
-  showScholarshipForm(false);
-  editingScholarshipId = null;
-}
-
-// ----- Admin: Student Applications -----
-function renderAdminApps() {
-  const box = $('adminapps-table');
-  const list = applications.filter(function (a) { return a.status !== 'Draft'; })
-    .sort(function (a, b) { return (b.dateSubmitted || '').localeCompare(a.dateSubmitted || '') || b.id - a.id; });
+  $('sa-count').textContent = 'Showing ' + list.length + ' of ' + all.length + ' submitted application' + (all.length === 1 ? '' : 's') + '.';
   if (list.length === 0) {
-    box.innerHTML = '<p>No submitted applications yet.</p><p class="muted">Applications appear here after a student clicks Submit Application.</p>';
+    $('sa-table').innerHTML = '<div class="card"><p>No submitted applications to show.</p><p class="muted">Applications appear here after students submit them.</p></div>';
     return;
   }
-  box.innerHTML = '<table class="table"><thead><tr><th>Student</th><th>Email</th><th>Scholarship</th><th>Course &amp; year</th><th>Date submitted</th><th>Status</th><th></th></tr></thead><tbody>' +
+  $('sa-table').innerHTML = '<div class="table-wrap"><table class="table"><thead><tr>' +
+    '<th>Student</th><th>Email</th><th>Scholarship</th><th>Course and year</th><th>Date submitted</th><th>Status</th><th></th></tr></thead><tbody>' +
     list.map(function (a) {
-      const s = findScholarship(a.scholarshipId);
-      return '<tr><td>' + esc(a.name) + '</td><td>' + esc(a.email) + '</td><td>' + esc(s ? s.name : 'Removed scholarship') + '</td>' +
-        '<td>' + esc(a.course) + ', ' + esc(yearLabel(a.yearLevel)) + '</td><td>' + formatDate(a.dateSubmitted) + '</td><td>' + statusBadge(a.status) + '</td>' +
-        '<td><button class="btn btn-primary btn-small" data-action="admin-app-open" data-id="' + a.id + '">Open</button></td></tr>';
-    }).join('') + '</tbody></table>';
+      return '<tr><td>' + esc(a.name) + '</td><td>' + esc(a.studentEmail) + '</td><td>' + esc(a.scholarshipName) + '</td>' +
+        '<td>' + esc((a.course || '-') + (a.yearLevel ? ', ' + yearLabel(a.yearLevel) : '')) + '</td>' +
+        '<td>' + formatDate(a.dateSubmitted) + '</td><td>' + statusBadge(a.status) + '</td>' +
+        '<td><button class="btn btn-primary btn-small" data-action="review-open" data-id="' + a.id + '">Open</button></td></tr>';
+    }).join('') + '</tbody></table></div>';
 }
 
-function openAdminApp(id) {
-  const app = findApp(id);
-  if (!app || !isAdmin()) return;
-  const s = findScholarship(app.scholarshipId);
-  const reviewStatuses = APP_STATUSES.filter(function (x) { return x !== 'Draft'; });
-  let html = '<div class="badges">' + statusBadge(app.status) + '</div>' +
-    '<h3 id="modal-title">' + esc(app.name) + '</h3><div class="sch-provider">Applying for: ' + esc(s ? s.name : 'Removed scholarship') + '</div>' +
-    '<ul class="info-list">' +
-    '<li><strong>Email:</strong> ' + esc(app.email) + '</li>' +
-    '<li><strong>Contact number:</strong> ' + esc(app.contact || '-') + '</li>' +
-    '<li><strong>Course and year:</strong> ' + esc(app.course) + ', ' + esc(yearLabel(app.yearLevel)) + '</li>' +
-    '<li><strong>GWA:</strong> ' + esc(app.gwa) + '</li>' +
-    '<li><strong>Monthly family income:</strong> ' + (app.income === '' ? '-' : peso(app.income)) + '</li>' +
-    '<li><strong>Date submitted:</strong> ' + formatDate(app.dateSubmitted) + '</li></ul>' +
-    '<div class="detail-section"><h4>Statement</h4><p>' + esc(app.statement) + '</p></div>' +
-    '<div class="detail-section"><h4>Submitted requirements</h4>' + docRowsHTML(app.documents, false) + '</div>' +
-    '<div class="detail-section"><h4>Review</h4>' +
-    '<div class="field"><label for="aa-status">Application status</label><select id="aa-status">' +
-    reviewStatuses.map(function (st) { return '<option value="' + esc(st) + '"' + (st === app.status ? ' selected' : '') + '>' + esc(st) + '</option>'; }).join('') + '</select></div>' +
-    '<div class="field' + (app.status === 'Incomplete' ? '' : ' hidden') + '" id="aa-note-box"><label for="aa-note">What is missing or incorrect? (shown to the student)</label>' +
-    '<textarea id="aa-note" rows="3" placeholder="e.g., Certificate of Indigency is unreadable. Please contact the scholarship office.">' + esc(app.adminNote || '') + '</textarea></div></div>' +
-    '<div class="card-actions"><button class="btn btn-primary" data-action="aa-save" data-id="' + app.id + '">Update Status</button>' +
-    '<button class="btn btn-ghost" data-action="close-modal">Close</button></div>';
-  $('modal-body').innerHTML = html;
-  $('modal').classList.remove('hidden');
+function openAppReview(id) {
+  const a = findApp(id);
+  if (!a || !isAdmin()) return;
+  reviewingAppId = id;
+  const missing = a.documents.filter(function (d) { return !d.file; }).length;
+  $('sa-detail').innerHTML =
+    '<div class="card"><div class="app-head"><div><h3>' + esc(a.scholarshipName) + '</h3><div class="sch-provider">Application #' + a.id + '</div></div>' + statusBadge(a.status) + '</div>' +
+    '<div class="app-meta">' +
+      '<div><span>Student name</span>' + esc(a.name) + '</div>' +
+      '<div><span>UP Mail</span>' + esc(a.studentEmail) + '</div>' +
+      '<div><span>Student number</span>' + esc(a.studentNumber || '-') + '</div>' +
+      '<div><span>Course and year</span>' + esc((a.course || '-') + (a.yearLevel ? ', ' + yearLabel(a.yearLevel) : '')) + '</div>' +
+      '<div><span>GWA</span>' + esc(a.gwa) + '</div>' +
+      '<div><span>Monthly family income</span>' + (a.income === '' ? '-' : peso(a.income)) + '</div>' +
+      '<div><span>Contact number</span>' + esc(a.contact || '-') + '</div>' +
+      '<div><span>Date submitted</span>' + formatDate(a.dateSubmitted) + '</div>' +
+    '</div>' +
+    '<div class="detail-section"><h4>Statement</h4><p>' + esc(a.statement) + '</p></div></div>' +
+    '<div class="card"><h3>Submitted requirements</h3>' +
+      (missing ? '<div class="alert alert-warn">' + missing + ' requirement(s) have no file.</div>' : '<div class="alert alert-ok">All ' + a.documents.length + ' required documents were uploaded.</div>') +
+      docsListHTML(a.documents) + '</div>' +
+    '<div class="card"><h3>Review</h3><div class="form-grid">' +
+      '<div class="field"><label for="rv-status">Application status</label><select id="rv-status">' +
+        REVIEW_STATUSES.map(function (st) { return '<option value="' + st + '"' + (st === a.status ? ' selected' : '') + '>' + st + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field full' + (a.status === 'Incomplete' ? '' : ' hidden') + '" id="rv-remark-box"><label for="rv-remark">What is missing or incorrect? *</label>' +
+        '<textarea id="rv-remark" rows="3" placeholder="e.g., Certificate of Registration is unreadable. Please re-upload.">' + esc(a.adminRemark || '') + '</textarea></div>' +
+    '</div><div id="rv-error" class="alert alert-error hidden"></div>' +
+    '<p class="muted">Students cannot edit a submitted application, even after a status change (prototype rule). Students see the new status and note on My Applications.</p>' +
+    '<div class="card-actions"><button class="btn btn-primary" data-action="review-save">Save Status</button>' +
+    '<button class="btn btn-ghost" data-action="review-back">Back to list</button></div></div>';
+  showSaDetail(true);
+  window.scrollTo(0, 0);
 }
 
-function saveAdminStatus(id) {
-  const app = findApp(id);
-  if (!app || !isAdmin()) return;
-  const status = val('aa-status');
-  const note = val('aa-note').trim();
-  if (status === 'Incomplete' && !note) { showToast('Please explain what is missing or incorrect.', 'error'); return; }
-  changeStatus(id, status, status === 'Incomplete' ? note : '');
-  closeModal();
-}
+async function saveReview() {
+  const a = findApp(reviewingAppId);
+  if (!a || !isAdmin()) return;
+  const status = val('rv-status');
+  const remark = status === 'Incomplete' ? val('rv-remark').trim() : '';
+  if (status === 'Incomplete' && !remark) {
+    $('rv-error').textContent = 'Please explain what is missing or incorrect before marking the application as Incomplete.';
+    $('rv-error').classList.remove('hidden');
+    return;
+  }
+  a.status = status;
+  a.adminRemark = remark;
+  a.reviewedBy = currentUser.fullName;
+  a.reviewedAt = new Date().toISOString();
+  if (status === 'Approved') { if (a.disbursement.status === 'Not Yet Approved') a.disbursement.status = 'Pending'; }
+  else a.disbursement.status = 'Not Yet Approved';
 
+  if (!(await persistApp(a))) return;
+  renderAll();
+  showSaDetail(false);
+  showToast('Status updated to "' + status + '". The student can now see it.');
+}
 
 /* =====================================================================
    9. NAVIGATION, MESSAGES, RESET
@@ -2129,7 +2479,7 @@ const PAGE_TITLES = {
   applications: 'My Applications',
   tracking: 'Tracking & Disbursement',
   manage: 'Manage Scholarships',
-  adminapps: 'Student Applications'
+  studentapps: 'Student Applications'
 };
 
 function showPage(name) {
@@ -2143,13 +2493,16 @@ function showPage(name) {
   $('page-title').textContent = PAGE_TITLES[name];
 
   showAppForm(false);        // always start on the application list
+  showAppFlash('');
   editingAppId = null;
   showScholarshipForm(false);
-  discardPendingAnn();
   editingScholarshipId = null;
+  pendingAnnouncement = null;
+  showSaDetail(false);
   closeMenu();
   renderAll();
   window.scrollTo(0, 0);
+  refreshData().then(renderAll);   // pick up changes made by other users
 }
 
 function toggleMenu() {
@@ -2169,24 +2522,25 @@ function showToast(message, type) {
   toastTimer = setTimeout(function () { t.classList.add('hidden'); }, 3800);
 }
 
-// "Reset Demo Data" button
-function resetDemoData() {
-  if (!confirm('Reset all demo data? This deletes your profile, all applications, uploaded documents, announcement PDFs and any scholarships added by staff, and restores the sample scholarships.')) return;
-  localStorage.removeItem(KEYS.scholarships);
-  localStorage.removeItem(KEYS.profile);
-  localStorage.removeItem(KEYS.applications);
-  clearFiles().then(function () {
-    loadAllData();             // loads fresh sample scholarships and saves them
-    profile = null;
-    pendingAnn = null;
-    matchingShown = false;
-    $('matching-results').innerHTML = '';
-    showProfileErrors([]);
-    fillProfileForm();
-    clearFilters();
-    showPage(defaultPage());
-    showToast('Demo data has been reset.');
-  });
+// "Reset Demo Data" (admin only): clears scholarships and applications for EVERYONE. Accounts are kept.
+async function resetDemoData() {
+  if (!isAdmin()) return;
+  if (!confirm('Reset demo data for ALL users?\n\nThis deletes every scholarship, student application and uploaded file in the shared database, then restores the sample scholarships. User accounts are kept.')) return;
+  try {
+    const apps = await store.list('applications');
+    const schs = await store.list('scholarships');
+    const paths = [];
+    apps.forEach(function (a) { a.documents.forEach(function (d) { if (d.file) paths.push(d.file.path); }); });
+    schs.forEach(function (s) { if (s.announcement) paths.push(s.announcement.path); });
+    await store.removeFiles(paths);
+    await Promise.all(apps.map(function (a) { return store.del('applications', a.id); }));
+    await Promise.all(schs.map(function (s) { return store.del('scholarships', s.id); }));
+    await Promise.all(getSampleScholarships().map(function (s) { return store.put('scholarships', s); }));
+  } catch (e) { showToast('Reset failed: ' + (e.message || e), 'error'); return; }
+  await refreshData();
+  clearAnnouncementPicker();
+  showPage('manage');
+  showToast('Demo data has been reset.');
 }
 
 
@@ -2197,8 +2551,9 @@ function resetDemoData() {
    ===================================================================== */
 
 document.addEventListener('click', function (e) {
-  // Click on the dark area outside the pop-up closes it
+  // Click on the dark area outside a pop-up closes it
   if (e.target.id === 'modal') { closeModal(); return; }
+  if (e.target.id === 'preview-modal') { closePreview(); return; }
 
   const el = e.target.closest('[data-action]');
   if (!el) return;
@@ -2213,88 +2568,114 @@ document.addEventListener('click', function (e) {
     case 'clear-filters': clearFilters(); break;
     case 'view': openDetails(id); break;
     case 'close-modal': closeModal(); break;
+    case 'close-preview': closePreview(); break;
     case 'apply': closeModal(); startApplication(id); break;
     case 'new-app': openNewAppForm(); break;
     case 'app-submit': saveApplication('submit'); break;
     case 'app-draft': saveApplication('draft'); break;
     case 'app-cancel': showAppForm(false); editingAppId = null; break;
-    case 'edit-app': { const a = findApp(id); if (a && a.status === 'Draft') openEditForm(a); else showToast('Submitted applications are locked.', 'error'); break; }
+    case 'edit-app': openEditForm(findApp(id)); break;
     case 'delete-app': deleteApplication(id); break;
+    case 'doc-remove': formDocs[Number(el.dataset.index)].file = null; renderFormDocs(); break;
+    case 'file-preview': previewStored(el); break;
+    case 'file-download': downloadStored(el); break;
+    case 'view-announcement': previewStored(el); break;
     case 'save-tracking': saveTracking(id, el.closest('.track-card')); break;
-    // sign-in and admin
+    // sign-in, accounts and admin
     case 'pick-role': pickRole(el.dataset.role); break;
+    case 'reg-cancel': showLoginStep('signin'); break;
     case 'sign-out': signOut(); break;
     case 'admin-new': openScholarshipForm(); break;
     case 'admin-edit': closeModal(); showPage('manage'); openScholarshipForm(id); break;
-    case 'sch-save': saveScholarship(); break;
-    case 'sch-cancel': cancelScholarshipForm(); break;
-    // files, PDF extraction and admin review
-    case 'ann-extract': extractFromPdf(); break;
-    case 'file-preview': previewFile(el.dataset.file, el.closest('.doc-block').querySelector('.preview-area')); break;
-    case 'file-download': downloadFile(el.dataset.file); break;
-    case 'preview-close': clearPreview(el.closest('.preview-area')); break;
-    case 'admin-app-open': openAdminApp(id); break;
-    case 'aa-save': saveAdminStatus(id); break;
+    case 'sch-publish': saveScholarship(true); break;
+    case 'sch-draft': saveScholarship(false); break;
+    case 'sch-cancel': showScholarshipForm(false); editingScholarshipId = null; pendingAnnouncement = null; break;
     case 'sch-delete': deleteScholarship(id); break;
+    case 'sch-toggle': toggleScholarship(id); break;
+    case 'extract': extractAnnouncement(); break;
+    case 'pending-pdf-view': if (pendingAnnouncement) showPreview(pendingAnnouncement, pendingAnnouncement.name, 'application/pdf'); break;
+    case 'pending-pdf-download': if (pendingAnnouncement) downloadBlob(pendingAnnouncement, pendingAnnouncement.name, 'application/pdf'); break;
+    case 'review-open': openAppReview(id); break;
+    case 'review-back': showSaDetail(false); break;
+    case 'review-save': saveReview(); break;
   }
 });
 
-// Dropdowns and checkboxes created by JavaScript
+// Dropdowns, checkboxes and file pickers created by JavaScript
 document.addEventListener('change', function (e) {
   const el = e.target;
-  if (el.dataset.action === 'doc-file') handleDocFile(el);
-  if (el.id === 'ann-file') onAnnFileChosen(el);
-  if (el.id === 'aa-status') $('aa-note-box').classList.toggle('hidden', el.value !== 'Incomplete');
+  if (el.dataset.action === 'doc-upload') handleDocUpload(el);
+  if (el.id === 'ann-file') handleAnnouncementPicked(el);
+  if (el.id === 'rv-status') $('rv-remark-box').classList.toggle('hidden', el.value !== 'Incomplete');
 });
 
 document.addEventListener('keydown', function (e) {
-  if (e.key === 'Escape') closeModal();
+  if (e.key === 'Escape') { closeModal(); closePreview(); }
 });
 
-function startApp() {
-  loadAllData();
-
+async function startApp() {
   // Fill the dropdown menus
   fillSelect('p-course', COURSES, 'Select your program');
   fillSelect('p-year', YEARS.map(function (y) { return { value: y, label: yearLabel(y) }; }), 'Select year level');
   fillSelect('p-aid', AID_OPTIONS);
-  fillSelect('p-interest', INTERESTS, 'Select an interest');
+  fillSelect('p-interest', INTERESTS, 'Select a College');
   fillSelect('f-course', COURSES.filter(function (c) { return c !== 'Other'; }), 'All programs');
   fillSelect('f-year', YEARS.map(function (y) { return { value: y, label: yearLabel(y) }; }), 'All year levels');
   fillSelect('f-type', TYPES, 'All types');
   fillSelect('af-course', COURSES, 'Select your program');
   fillSelect('af-year', YEARS.map(function (y) { return { value: y, label: yearLabel(y) }; }), 'Select year level');
+  fillSelect('reg-course', COURSES, 'Select your program');
+  fillSelect('reg-year', YEARS.map(function (y) { return { value: y, label: yearLabel(y) }; }), 'Select year level');
+  fillSelect('sa-status', REVIEW_STATUSES, 'All statuses');
 
   buildScholarshipFormChoices();
-  fillProfileForm();
 
-  // Sign-in form and admin scholarship form: do not let the Enter key reload the page
+  // Forms: do not let the Enter key reload the page
   $('login-form').addEventListener('submit', function (e) { e.preventDefault(); handleSignIn(); });
+  $('register-form').addEventListener('submit', function (e) { e.preventDefault(); handleRegister(); });
   $('sch-form').addEventListener('submit', function (e) { e.preventDefault(); });
-
-  // Profile form: pressing "Save Profile"
-  $('profile-form').addEventListener('submit', function (e) {
-    e.preventDefault();
-    handleSaveProfile();
-  });
-
-  // Application form: do not let the Enter key reload the page
   $('app-form').addEventListener('submit', function (e) { e.preventDefault(); });
+  $('profile-form').addEventListener('submit', function (e) { e.preventDefault(); handleSaveProfile(); });
 
-  // Marketplace: update the list while typing and whenever a filter changes
+  // Marketplace and Student Applications: update the list while typing and whenever a filter changes
   ['m-search', 'f-course', 'f-year', 'f-type', 'm-sort'].forEach(function (id) {
     $(id).addEventListener('input', renderMarketplace);
     $(id).addEventListener('change', renderMarketplace);
   });
-
-  // Application form: show new documents when another scholarship is chosen
-  $('af-scholarship').addEventListener('change', function () {
-    if (editingAppId === null) renderFormDocs(null);
+  ['sa-status', 'sa-search'].forEach(function (id) {
+    $(id).addEventListener('input', renderStudentApps);
+    $(id).addEventListener('change', renderStudentApps);
   });
 
-  renderAll();
+  // Application form: show the new upload rows when another scholarship is chosen
+  $('af-scholarship').addEventListener('change', function () {
+    if (editingAppId === null) { setDocsFromScholarship(); renderFormDocs(); }
+  });
+
+  $('storage-note').textContent = sb
+    ? 'Shared cloud database (Supabase) is connected. All users see the same data.'
+    : 'LOCAL DEMO MODE: no cloud database is configured, so data is stored only in this browser and is NOT shared with other users. See README.';
+  $('storage-note').classList.toggle('local', !sb);
+
   pickRole('student');
-  showSessionScreen();   // shows the sign-in screen, or the app if someone is already signed in
+  showLoginStep('signin');
+
+  // Restore the previous sign-in after a page refresh
+  const saved = loadJSON(KEYS.session, null);
+  if (saved && saved.email) {
+    try {
+      const user = await store.get('users', saved.email);
+      if (user) { await completeSignIn(user, 'Welcome back, ' + user.fullName + '!'); }
+      else saveJSON(KEYS.session, null);
+    } catch (e) { showLoginError('Cannot reach the shared database: ' + (e.message || e)); }
+  }
+  showSessionScreen();
+
+  // Check for changes made by other users every 20 seconds
+  setInterval(function () {
+    if (!currentUser || document.hidden || saving) return;
+    refreshData().then(renderAll);
+  }, 20000);
 }
 
 startApp();
