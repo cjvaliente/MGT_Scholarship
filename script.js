@@ -765,14 +765,18 @@ function checkEligibility(s, p) {
 }
 
 // Returns every scholarship that fully or partially matches, best matches first
+// Returns only scholarships that fully match (100% of requirements met).
+// Open scholarships come first, then closed ones; each group is sorted by deadline.
 function computeMatches(p) {
   const matches = [];
   scholarships.forEach(function (s) {
+    if (s.published === false) return;   // skip unpublished listings
     const result = checkEligibility(s, p);
-    if (result.level !== 'none') matches.push({ scholarship: s, result: result });
+    if (result.level === 'full') matches.push({ scholarship: s, result: result });
   });
   matches.sort(function (a, b) {
-    return (b.result.score - a.result.score) || a.scholarship.deadline.localeCompare(b.scholarship.deadline);
+    return (Number(isClosed(a.scholarship)) - Number(isClosed(b.scholarship))) ||
+      a.scholarship.deadline.localeCompare(b.scholarship.deadline);
   });
   return matches;
 }
@@ -856,15 +860,14 @@ function renderMatchingResults() {
   const box = $('matching-results');
   if (!profile) { box.innerHTML = ''; return; }
 
-  const matches = computeMatches(profile);
-  const full = matches.filter(function (m) { return m.result.level === 'full'; }).length;
-  const partial = matches.length - full;
-  const notMatching = scholarships.length - matches.length;
+   const matches = computeMatches(profile);
+  const published = scholarships.filter(function (s) { return s.published !== false; });
+  const notMatching = published.length - matches.length;
 
   let html = '<h3 class="section-title">Matching Results for ' + esc(profile.name) + '</h3>';
-  html += '<p class="results-summary">' + full + ' full match' + (full === 1 ? '' : 'es') + ', ' +
-    partial + ' partial match' + (partial === 1 ? '' : 'es') + '. ' + notMatching + ' scholarship' +
-    (notMatching === 1 ? '' : 's') + ' did not match enough requirements.</p>';
+  html += '<p class="results-summary">' + matches.length + ' full match' + (matches.length === 1 ? '' : 'es') + '. ' +
+    notMatching + ' scholarship' + (notMatching === 1 ? '' : 's') +
+    ' did not match all of your requirements.</p>';
 
   if (matches.length === 0) {
     html += '<div class="card"><p>No scholarships matched your profile. Try the Marketplace to browse all listings.</p></div>';
@@ -1397,7 +1400,7 @@ function renderApplications() {
     } else if (!isDraft && app.adminRemark) {
       html += '<div class="alert alert-info">Reviewer note: ' + esc(app.adminRemark) + '</div>';
     }
-
+    html += approvalBox(app);
     html += '<div class="checklist"><h4>Uploaded requirements (' + (app.documents.length - missing.length) + ' of ' + app.documents.length + ')</h4>' +
       docsListHTML(app.documents) + '</div>';
 
@@ -1536,10 +1539,28 @@ function saveTracking(id, card) {
   showToast('Tracking information updated.');
 }
 
+// Message shown to a student whose application has been approved
+const APPROVAL_MESSAGE =
+  'Congratulations! You have been approved. Please proceed to the Office of Student Affairs, ' +
+  'Scholarship and Financial Assistance Section for further details, or wait for the approval details ' +
+  'that will be sent to your email. Thank you!';
 
-/* =====================================================================
-   8. DASHBOARD
-   ===================================================================== */
+  const REJECTION_MESSAGE =
+  'We regret to inform you that your application has been rejected. Please contact the Office of Student Affairs, ' +
+  'Scholarship and Financial Assistance Section for further details. Thank you for your interest and we encourage you to apply again in the future.'; 
+
+
+function approvalBox(app) {
+  if (app.status === 'Approved') {
+    return '<div class="approval-box">' + esc(APPROVAL_MESSAGE) + '</div>';
+  }
+  if (app.status === 'Rejected') {
+    return '<div class="rejection-box">' + esc(REJECTION_MESSAGE) + '</div>';
+  }
+  return ''; 
+}
+
+/*Dashboard */
 
 function statCard(label, value, sub, colorClass) {
   return '<div class="stat ' + (colorClass || '') + '"><div class="stat-value">' + value + '</div>' +
@@ -1611,7 +1632,7 @@ function renderDashboard() {
   }
 }
 
-// Re-draws every section. Called after any change so all numbers stay up to date.
+
 function renderAll() {
   renderRoleInfo();
   if (isAdmin()) {
@@ -1627,14 +1648,7 @@ function renderAll() {
 }
 
 
-/* =====================================================================
-   PDF TEXT EXTRACTION  (Feature 1)
-   Step 1: PDF.js reads the text of a text-based PDF.
-   Step 2: parseScholarshipText() looks for labels such as "Deadline:" or
-           "Required documents" and simple patterns (dates, amounts, GWA).
-   Anything it cannot find is left blank. It never invents information.
-   Scanned PDFs (pictures of text) have no selectable text, so they cannot be read.
-   ===================================================================== */
+/*text xtraction from pdfs*/
 
 async function pdfToText(file) {
   if (!window.pdfjsLib) throw new Error('The PDF reader (PDF.js) did not load. Check your internet connection and reload the page.');
@@ -1762,7 +1776,7 @@ function parseScholarshipText(text) {
     if (para) { d.description = para.slice(0, 500); notes.push('The description was taken from the first long paragraph of the PDF.'); }
   }
 
-  // Eligibility text (courses, years, fields are searched here when a section exists)
+ 
   const eligSec = findSection(lines, ['eligibility(?: requirements)?', 'qualifications', 'who (?:may|can) apply', 'qualified applicants', 'applicants must']);
   const elig = eligSec ? eligSec.join(' ') : flat.replace(/\n/g, ' ');
 
@@ -1788,14 +1802,13 @@ function parseScholarshipText(text) {
     d.yearLevels = Object.keys(set).map(Number).sort();
   }
 
-  // Field of study (only from an eligibility section)
+
   if (eligSec) {
     const fieldRules = [
-      ['Science & Mathematics', /science|mathematics|biolog|chemistry|physics/i],
-      ['Technology & Computing', /computer|information technology|computing|software|engineering/i],
-      ['Social Sciences', /social science|anthropolog|sociolog|psycholog/i],
-      ['Management & Economics', /management|economics|business|accountancy/i],
-      ['Arts & Humanities', /humanities|literature|communication arts|fine arts/i]
+      ['College ofScience & Mathematics', /applied mathematics|biology|food techonology|data science|computer science/i],
+      ['School of Management', /agribusiness economics/i],
+      ['College of Humanities and Social Sciences', /architecture|anthropology|english|/i],
+      ['Department of Human Kinetics', /sport science/i]
     ];
     if (/any field|all fields|regardless of (?:field|course)/i.test(elig)) d.fields = ['Any'];
     else d.fields = fieldRules.filter(function (r2) { return r2[1].test(elig); }).map(function (r2) { return r2[0]; });
@@ -1853,16 +1866,6 @@ function parseScholarshipText(text) {
   return { data: d, found: found, missing: missing, notes: notes };
 }
 
-/* =====================================================================
-   8B. ACCOUNTS (UP MAIL), ROLES, ADMIN SCHOLARSHIP MANAGEMENT
-   Sign-in uses only the UP Mail address. There is NO real UP Mail password
-   and no connection to Google. One email = one account (the email is the user id).
-   Students choose "Student". Admin staff must also type the staff passcode.
-
-   IMPORTANT: this is a DEMONSTRATION sign-in for an MVP pitch. The passcode is
-   visible in this file and the database is open to the demo app, so it is NOT
-   secure. A real system needs proper authentication.
-   ===================================================================== */
 
 const ADMIN_PASSCODE = 'admin123';
 
