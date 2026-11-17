@@ -172,6 +172,17 @@
                   <label for="sch-desc">Description</label>
                   <textarea id="sch-desc" rows="3"></textarea>
                 </div>
+                <div class="field full">
+                <label for="sch-logo">Scholarship logo</label>
+                <div class="logo-upload">
+                  <img id="sch-logo-preview" class="logo-preview hidden" alt="Logo preview">
+                  <label class="btn btn-secondary file-btn">Choose Image
+                    <input type="file" id="sch-logo" class="file-input" accept="image/png,image/jpeg,image/webp">
+                  </label>
+                  <button type="button" class="btn btn-ghost hidden" id="sch-logo-remove" data-action="sch-logo-remove">Remove logo</button>
+                </div>
+                <small class="muted">PNG, JPG or WebP. Leave empty if the scholarship has no logo.</small>
+              </div>
 
                 <div class="field full">
                   <label>Eligible programs *</label>
