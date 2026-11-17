@@ -28,8 +28,8 @@
 const KEYS = { session: 'iskolektib_session' };
 
 const COURSES = [
-  'BS Agribusiness Economics', 'BA Anthropology', 'BA English', 'BS Applied Mathematics', 'BS Architecture', 
-  'BS Biology', 'BA Communication and Media Arts', 'BS Computer Science', 'BS Data Science', 
+  'BS Agribusiness Economics', 'BA Anthropology', 'BA English', 'BS Applied Mathematics', 'BS Architecture',
+  'BS Biology', 'BA Communication and Media Arts', 'BS Computer Science', 'BS Data Science',
   'BS Food Technology', 'AA Sport Science', 'B Sport Science'
 ];
 
@@ -61,21 +61,25 @@ const TIMELINE_STEPS = [
   'Application Submitted', 'Under Review', 'Approved', 'Disbursement Processing', 'Funds Released'
 ];
 
+// Every scholarship income limit (maxIncome) is stored as an ANNUAL figure, because that is how the
+// UP Mindanao scholarship list states it. This switch tells the matcher what the student types in the
+// profile form: true  = the student enters MONTHLY family income (it is multiplied by 12 before comparing)
+//                false = the student enters ANNUAL family income (compared as is)
+// Make the label of the income field in your HTML say the same thing.
+const INCOME_INPUT_IS_MONTHLY = true;
+
 
 /* =====================================================================
-   2. SAMPLE SCHOLARSHIP DATA  (FICTIONAL - for demonstration only)
-   Deadlines are calculated from today's date so the demo always has
-   some open and some closing-soon scholarships.
+   2. SCHOLARSHIP DATA (real UP Mindanao list)
+   Deadlines are fixed ISO dates (YYYY-MM-DD). Where the source list gave no
+   deadline, 2026-12-12 is used as a placeholder.
+   Fields the source list did not state are left empty / null on purpose
+   (maxGWA, maxIncome, compliance, renewal) rather than guessed.
+   maxIncome is ANNUAL family gross income in PHP.
+   "courses" must use the exact names in COURSES; "fields" must use the exact names in INTERESTS.
+   Monthly stipends are converted to a per-semester figure using 5 months per semester.
+   Records with published:false have no details in the source list yet.
    ===================================================================== */
-
-// Real UP Mindanao scholarship list (replaces the old sample records).
-// Deadlines are fixed ISO dates (YYYY-MM-DD). Where the source list gave no
-// deadline, 2026-12-12 is used as a placeholder.
-// Fields the source list did not state are left empty / null on purpose
-// (maxGWA, maxIncome, compliance, renewal) rather than guessed.
-// Monthly stipends are converted to a per-semester figure using 5 months per
-// semester, the same basis the source list uses for Plate UP and Live UP.
-// Records with published:false have no details in the source list yet.
 function getSampleScholarships() {
   return [
     {
@@ -138,7 +142,7 @@ function getSampleScholarships() {
       yearLevels: [3, 4],
       maxGWA: null,
       maxIncome: 300000,
-      fields: ['Management & Economics', 'Science & Mathematics', 'Technology & Computing'],
+      fields: ['School of Management', 'College of Science & Mathematics'],
       allowsExistingAid: false,
       benefits: 'Benefits are not stated in the scholarship list.',
       benefitAmount: 0,
@@ -172,7 +176,7 @@ function getSampleScholarships() {
       yearLevels: [1],
       maxGWA: null,
       maxIncome: 500000,
-      fields: ['Science & Mathematics', 'Technology & Computing'],
+      fields: ['College of Science & Mathematics'],
       allowsExistingAid: true,
       benefits: 'Benefits are not stated in the scholarship list.',
       benefitAmount: 0,
@@ -255,7 +259,7 @@ function getSampleScholarships() {
       yearLevels: [1],
       maxGWA: null,
       maxIncome: 500000,
-      fields: ['Science & Mathematics', 'Technology & Computing'],
+      fields: ['College of Science & Mathematics'],
       allowsExistingAid: true,
       benefits: 'Benefits are not stated in the scholarship list.',
       benefitAmount: 0,
@@ -279,16 +283,16 @@ function getSampleScholarships() {
       name: 'Move to Change Foundation Changemakers Scholarship Program',
       provider: 'Move to Change Foundation, Inc.',
       type: 'Private',
-      description: 'Scholarship for 1st year students of BS Applied Mathematics, BS Food Technology, BS Computer Science, BS Biology, BS Anthropology, BA Communication Arts and Media Arts, BS Architecture, BA English (Creative Writing), BS Agribusiness Economics, B Sports Science and BS Data Science. Combined annual family gross income must not exceed PHP 250,000.',
+      description: 'Scholarship for 1st year students of BS Applied Mathematics, BS Food Technology, BS Computer Science, BS Biology, BA Anthropology, BA Communication and Media Arts, BS Architecture, BA English (Creative Writing), BS Agribusiness Economics, B Sport Science and BS Data Science. Combined annual family gross income must not exceed PHP 250,000.',
       courses: [
         'BS Applied Mathematics', 'BS Food Technology', 'BS Computer Science', 'BS Biology',
-        'BS Anthropology', 'BA Communication Arts and Media Arts', 'BS Architecture',
-        'BA English (Creative Writing)', 'BS Agribusiness Economics', 'B Sports Science', 'BS Data Science'
+        'BA Anthropology', 'BA Communication and Media Arts', 'BS Architecture',
+        'BA English', 'BS Agribusiness Economics', 'B Sport Science', 'BS Data Science'
       ],
       yearLevels: [1],
       maxGWA: null,
       maxIncome: 250000,
-      fields: ['Science & Mathematics', 'Technology & Computing', 'Social Sciences', 'Arts & Humanities', 'Management & Economics'],
+      fields: ['College of Science & Mathematics', 'College of Humanities and Social Sciences', 'School of Management', 'Department of Human Kinetics'],
       allowsExistingAid: true,
       benefits: 'Benefits are not stated in the scholarship list.',
       benefitAmount: 0,
@@ -434,7 +438,7 @@ function getSampleScholarships() {
    3. HELPER FUNCTIONS
    ===================================================================== */
 
-// ----- The "state" of the app (loaded from localStorage in loadAllData) -----
+// ----- The "state" of the app -----
 let scholarships = [];
 let applications = [];
 let profile = null;
@@ -489,7 +493,7 @@ function formatDate(s) {
   return parseISO(s).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-function isClosed(s) { return daysUntil(s.deadline) < 0; }
+function isClosed(s) { return !!s.deadline && daysUntil(s.deadline) < 0; }
 
 function deadlineBadge(deadline) {
   if (!deadline) return '<span class="badge badge-gray">No deadline</span>';
@@ -690,6 +694,9 @@ function fillSelect(id, items, placeholder) {
    the requirements the student meets and the ones they do not meet.
    ===================================================================== */
 
+// Annual family income of the student, in PHP, whatever the profile form collects
+function annualIncomeOf(p) { return INCOME_INPUT_IS_MONTHLY ? p.income * 12 : p.income; }
+
 function checkEligibility(s, p) {
   const criteria = [];   // each item: { ok: true/false, good: 'text', bad: 'text' }
 
@@ -721,21 +728,22 @@ function checkEligibility(s, p) {
     });
   }
 
-  // Monthly family income limit
+  // Family income limit (scholarship limits are ANNUAL)
   if (s.maxIncome !== null) {
+    const annual = annualIncomeOf(p);
     criteria.push({
-      ok: p.income <= s.maxIncome,
-      good: 'Your monthly family income (' + peso(p.income) + ') is within the limit of ' + peso(s.maxIncome) + '.',
-      bad: 'Your monthly family income (' + peso(p.income) + ') is above the limit of ' + peso(s.maxIncome) + '.'
+      ok: annual <= s.maxIncome,
+      good: 'Your annual family income (' + peso(annual) + ') is within the limit of ' + peso(s.maxIncome) + '.',
+      bad: 'Your annual family income (' + peso(annual) + ') is above the limit of ' + peso(s.maxIncome) + '.'
     });
   }
 
-  // Field of study / academic interest
+  // Field of study / academic interest (College)
   if (!s.fields.includes('Any')) {
     criteria.push({
       ok: s.fields.includes(p.interest),
-      good: 'Your interest (' + p.interest + ') fits the scholarship focus.',
-      bad: 'Focus areas: ' + s.fields.join(', ') + '. Your interest is ' + p.interest + '.'
+      good: 'Your college (' + p.interest + ') fits the scholarship focus.',
+      bad: 'Focus areas: ' + s.fields.join(', ') + '. Your college is ' + p.interest + '.'
     });
   }
 
@@ -764,7 +772,6 @@ function checkEligibility(s, p) {
   return { met: met, unmet: unmetList.map(function (c) { return c.bad; }), score: score, level: level };
 }
 
-// Returns every scholarship that fully or partially matches, best matches first
 // Returns only scholarships that fully match (100% of requirements met).
 // Open scholarships come first, then closed ones; each group is sorted by deadline.
 function computeMatches(p) {
@@ -776,7 +783,7 @@ function computeMatches(p) {
   });
   matches.sort(function (a, b) {
     return (Number(isClosed(a.scholarship)) - Number(isClosed(b.scholarship))) ||
-      a.scholarship.deadline.localeCompare(b.scholarship.deadline);
+      (a.scholarship.deadline || '').localeCompare(b.scholarship.deadline || '');
   });
   return matches;
 }
@@ -798,7 +805,7 @@ function readProfileForm() {
   if (!course) errors.push('Please select your course or degree program.');
   if (!year) errors.push('Please select your year level.');
   if (gwaText === '' || isNaN(gwa) || gwa < 1 || gwa > 5) errors.push('GWA must be a number from 1.00 to 5.00.');
-  if (incomeText === '' || isNaN(income) || income < 0) errors.push('Monthly family income must be a number (0 or higher).');
+  if (incomeText === '' || isNaN(income) || income < 0) errors.push('Family income must be a number (0 or higher).');
   if (!aid) errors.push('Please select your scholarship / financial assistance status.');
   if (!interest) errors.push('Please select your College.');
 
@@ -860,7 +867,7 @@ function renderMatchingResults() {
   const box = $('matching-results');
   if (!profile) { box.innerHTML = ''; return; }
 
-   const matches = computeMatches(profile);
+  const matches = computeMatches(profile);
   const published = scholarships.filter(function (s) { return s.published !== false; });
   const notMatching = published.length - matches.length;
 
@@ -878,12 +885,10 @@ function renderMatchingResults() {
       const levelBadge = m.result.level === 'full'
         ? '<span class="badge badge-green">Full match</span>'
         : '<span class="badge badge-amber">Partial match</span>';
-      const closed = isClosed(s);
 
       html += '<div class="card">';
       html += '<div class="badges">' + levelBadge + '<span class="badge badge-gray">' + m.result.score + '% of requirements met</span>' + '</div>';
-      html += '<h4 class="sch-title">' + esc(s.name) + '</h4>';
-      html += '<div class="sch-provider">' + esc(s.provider) + '</div>';
+      html += schHeadHTML(s);
       html += '<p>Deadline: <strong>' + formatDate(s.deadline) + '</strong> ' + deadlineBadge(s.deadline) + '</p>';
       html += '<div class="reason-box">';
       html += '<h4>Why it matches</h4><ul class="ok">' +
@@ -936,7 +941,7 @@ function getFilteredScholarships() {
   });
 
   list.sort(function (a, b) {
-    return sort === 'desc' ? b.deadline.localeCompare(a.deadline) : a.deadline.localeCompare(b.deadline);
+    return sort === 'desc' ? (b.deadline || '').localeCompare(a.deadline || '') : (a.deadline || '').localeCompare(b.deadline || '');
   });
   return list;
 }
@@ -954,14 +959,13 @@ function renderMarketplace() {
     return '<div class="card">' +
       '<div class="badges"><span class="badge badge-gray">' + esc(s.type) + '</span>' +
       '</div>' +
-      '<h4 class="sch-title">' + esc(s.name) + '</h4>' +
-      '<div class="sch-provider">' + esc(s.provider) + '</div>' +
+      schHeadHTML(s) +
       '<p class="sch-desc">' + esc(s.description) + '</p>' +
       '<ul class="info-list">' +
         '<li><strong>Programs:</strong> ' + esc(s.courses.includes('Any') ? 'Any program' : s.courses.join(', ')) + '</li>' +
         '<li><strong>Year levels:</strong> ' + esc(yearsText(s.yearLevels)) + '</li>' +
         '<li><strong>Minimum GWA:</strong> ' + (s.maxGWA !== null ? s.maxGWA.toFixed(2) + ' or better' : 'No requirement') + '</li>' +
-        '<li><strong>Family income:</strong> ' + (s.maxIncome !== null ? 'Up to ' + peso(s.maxIncome) + ' per month' : 'No requirement') + '</li>' +
+        '<li><strong>Family income:</strong> ' + (s.maxIncome !== null ? 'Up to ' + peso(s.maxIncome) + ' per year' : 'No requirement') + '</li>' +
         '<li><strong>Benefits:</strong> ' + esc(s.benefits) + '</li>' +
         '<li><strong>Deadline:</strong> ' + formatDate(s.deadline) + ' ' + deadlineBadge(s.deadline) + '</li>' +
       '</ul>' +
@@ -988,8 +992,8 @@ function openDetails(id) {
 
   let html = '<div class="badges"><span class="badge badge-gray">' + esc(s.type) + '</span>' +
     (s.isSample ? '<span class="badge badge-sample">Sample demonstration data - not an official listing</span>' : '') + '</div>';
-  html += '<h3 id="modal-title">' + esc(s.name) + '</h3>';
-  html += '<div class="sch-provider">' + esc(s.provider) + '</div>';
+  html += '<div class="sch-head">' + logoHtml(s) + '<div><h3 id="modal-title">' + esc(s.name) + '</h3>' +
+    '<div class="sch-provider">' + esc(s.provider) + '</div></div></div>';
   html += '<p>' + esc(s.description) + '</p>';
 
   html += '<div class="detail-section"><h4>Deadline</h4><p>' + formatDate(s.deadline) + ' ' + deadlineBadge(s.deadline) + '</p></div>';
@@ -999,13 +1003,14 @@ function openDetails(id) {
     '<li><strong>Year levels:</strong> ' + esc(yearsText(s.yearLevels)) + '</li>' +
     '<li><strong>Field of study:</strong> ' + esc(s.fields.includes('Any') ? 'Any' : s.fields.join(', ')) + '</li>' +
     '<li><strong>Minimum GWA:</strong> ' + (s.maxGWA !== null ? s.maxGWA.toFixed(2) + ' or better' : 'No requirement') + '</li>' +
-    '<li><strong>Monthly family income:</strong> ' + (s.maxIncome !== null ? 'Up to ' + peso(s.maxIncome) : 'No requirement') + '</li>' +
+    '<li><strong>Annual family income:</strong> ' + (s.maxIncome !== null ? 'Up to ' + peso(s.maxIncome) : 'No requirement') + '</li>' +
     '<li><strong>Other scholarships / assistance:</strong> ' + (s.allowsExistingAid ? 'Allowed' : 'Not allowed') + '</li>' +
     '</ul></div>';
 
   html += '<div class="detail-section"><h4>Benefits</h4><p>' + esc(s.benefits) + '</p></div>';
-  html += '<div class="detail-section"><h4>Required documents</h4><ul>' +
-    s.documents.map(function (d) { return '<li>' + esc(d) + '</li>'; }).join('') + '</ul></div>';
+  html += '<div class="detail-section"><h4>Required documents</h4>' +
+    (s.documents.length ? '<ul>' + s.documents.map(function (d) { return '<li>' + esc(d) + '</li>'; }).join('') + '</ul>' : '<p class="muted">No documents are listed.</p>') +
+    '</div>';
   html += '<div class="detail-section"><h4>How to apply</h4><p>' + esc(s.instructions) + '</p></div>';
 
   // If the logged-in student has a saved profile, show how they compare
@@ -1025,7 +1030,7 @@ function openDetails(id) {
     html += '<button class="btn btn-secondary btn-small" data-action="view-announcement" data-path="' + esc(s.announcement.path) + '" data-name="' + esc(s.announcement.name) + '" data-type="application/pdf">View original announcement (PDF)</button>';
   }
   if (s.link && /^https?:\/\//i.test(s.link)) {
-    html += '<a class="btn btn-secondary btn-small" href="' + esc(s.link) + '" target="_blank" rel="noopener">Open external page (sample link)</a>';
+    html += '<a class="btn btn-secondary btn-small" href="' + esc(s.link) + '" target="_blank" rel="noopener">Open external page</a>';
   }
   html += '<button class="btn btn-ghost btn-small" data-action="close-modal">Close</button></div>';
 
@@ -1082,6 +1087,7 @@ function uploadBadge(file) {
 
 // Read-only list of requirements and their files (student cards and admin review)
 function docsListHTML(docs) {
+  if (!docs.length) return '<p class="muted">No documents are required for this scholarship.</p>';
   return '<div class="doc-list">' + docs.map(function (d) {
     return '<div class="doc-row"><div class="doc-main"><strong>' + esc(d.name) + '</strong> ' + uploadBadge(d.file) +
       (d.file ? '<div class="doc-file">' + esc(d.file.name) + ' (' + fmtSize(d.file.size) + ')</div>' : '') + '</div>' +
@@ -1154,7 +1160,7 @@ function renderFormDocs() {
     $('af-scholarship-info').innerHTML = '';
     return;
   }
-  $('af-docs').innerHTML = formDocs.map(function (d, i) {
+  $('af-docs').innerHTML = formDocs.length === 0 ? '<p class="muted">No documents are required for this scholarship.</p>' : formDocs.map(function (d, i) {
     return '<div class="doc-row"><div class="doc-main"><strong>' + esc(d.name) + '</strong> ' + uploadBadge(d.file) +
       '<div class="doc-file">' + (d.file ? esc(d.file.name) + ' (' + fmtSize(d.file.size) + ')' : 'PDF, JPG, JPEG or PNG, up to ' + MAX_FILE_MB + ' MB') + '</div></div>' +
       '<div class="doc-actions">' +
@@ -1269,8 +1275,7 @@ function validateAppForm(f, strict) {
     if (!f.course) errors.push('Course / degree program is required.');
     if (!f.yearLevel) errors.push('Year level is required.');
     if (f.gwaText === '' || isNaN(gwa) || gwa < 1 || gwa > 5) errors.push('GWA must be a number from 1.00 to 5.00.');
-    if (f.incomeText === '' || isNaN(income) || income < 0) errors.push('Monthly family income must be a number (0 or higher).');
-    
+    if (f.incomeText === '' || isNaN(income) || income < 0) errors.push('Family income must be a number (0 or higher).');
   }
   return errors;
 }
@@ -1539,16 +1544,15 @@ function saveTracking(id, card) {
   showToast('Tracking information updated.');
 }
 
-// Message shown to a student whose application has been approved
+// Messages shown to a student whose application has been approved / rejected
 const APPROVAL_MESSAGE =
   'Congratulations! You have been approved. Please proceed to the Office of Student Affairs, ' +
   'Scholarship and Financial Assistance Section for further details, or wait for the approval details ' +
   'that will be sent to your email. Thank you!';
 
-  const REJECTION_MESSAGE =
+const REJECTION_MESSAGE =
   'We regret to inform you that your application has been rejected. Please contact the Office of Student Affairs, ' +
-  'Scholarship and Financial Assistance Section for further details. Thank you for your interest and we encourage you to apply again in the future.'; 
-
+  'Scholarship and Financial Assistance Section for further details. Thank you for your interest and we encourage you to apply again in the future.';
 
 function approvalBox(app) {
   if (app.status === 'Approved') {
@@ -1557,10 +1561,13 @@ function approvalBox(app) {
   if (app.status === 'Rejected') {
     return '<div class="rejection-box">' + esc(REJECTION_MESSAGE) + '</div>';
   }
-  return ''; 
+  return '';
 }
 
-/*Dashboard */
+
+/* =====================================================================
+   8. DASHBOARD
+   ===================================================================== */
 
 function statCard(label, value, sub, colorClass) {
   return '<div class="stat ' + (colorClass || '') + '"><div class="stat-value">' + value + '</div>' +
@@ -1570,15 +1577,14 @@ function statCard(label, value, sub, colorClass) {
 function renderDashboard() {
   const openOnes = scholarships.filter(function (s) { return !isClosed(s); });
 
-  // Matching count (uses the saved profile)
+  // Matching count (uses the saved profile). computeMatches only returns full matches.
   let matchValue = '-';
   let matchSub = 'Save your profile first';
   let matches = [];
   if (profile) {
     matches = computeMatches(profile);
-    const full = matches.filter(function (m) { return m.result.level === 'full'; }).length;
     matchValue = matches.length;
-    matchSub = full + ' full, ' + (matches.length - full) + ' partial';
+    matchSub = 'full match' + (matches.length === 1 ? '' : 'es');
   }
 
   const underReview = applications.filter(function (a) { return a.status === 'Under Review'; }).length;
@@ -1599,7 +1605,7 @@ function renderDashboard() {
   $('welcome-title').textContent = session ? 'Welcome, ' + session.name + '!' : 'Welcome, Iskx!';
 
   // Upcoming deadlines: next 5 open scholarships
-  const upcoming = openOnes.slice().sort(function (a, b) { return a.deadline.localeCompare(b.deadline); }).slice(0, 5);
+  const upcoming = openOnes.slice().sort(function (a, b) { return (a.deadline || '').localeCompare(b.deadline || ''); }).slice(0, 5);
   $('dash-deadlines').innerHTML = upcoming.length === 0 ? '<p class="muted">No open scholarships.</p>' :
     upcoming.map(function (s) {
       return '<div class="list-item"><div><div class="title">' + esc(s.name) + '</div><div class="meta">' + formatDate(s.deadline) + '</div></div>' +
@@ -1648,7 +1654,9 @@ function renderAll() {
 }
 
 
-/*text xtraction from pdfs*/
+/* =====================================================================
+   8A. TEXT EXTRACTION FROM ANNOUNCEMENT PDFs
+   ===================================================================== */
 
 async function pdfToText(file) {
   if (!window.pdfjsLib) throw new Error('The PDF reader (PDF.js) did not load. Check your internet connection and reload the page.');
@@ -1776,15 +1784,13 @@ function parseScholarshipText(text) {
     if (para) { d.description = para.slice(0, 500); notes.push('The description was taken from the first long paragraph of the PDF.'); }
   }
 
- 
   const eligSec = findSection(lines, ['eligibility(?: requirements)?', 'qualifications', 'who (?:may|can) apply', 'qualified applicants', 'applicants must']);
   const elig = eligSec ? eligSec.join(' ') : flat.replace(/\n/g, ' ');
 
   // Courses
   if (/\b(any|all) (?:degree )?(?:programs?|courses?|degrees?|disciplines)\b|open to all (?:students|programs|courses)/i.test(elig)) d.courses = ['Any'];
   else d.courses = COURSES.filter(function (c) {
-    if (c === 'Other') return false;
-    const short = c.replace(/^(BS|BA) /, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const short = c.replace(/^(BS|BA|AA|B) /, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return new RegExp('\\b' + short + '\\b', 'i').test(elig);
   });
 
@@ -1802,12 +1808,12 @@ function parseScholarshipText(text) {
     d.yearLevels = Object.keys(set).map(Number).sort();
   }
 
-
+  // Field of study (College). Names must match INTERESTS exactly.
   if (eligSec) {
     const fieldRules = [
-      ['College ofScience & Mathematics', /applied mathematics|biology|food techonology|data science|computer science/i],
+      ['College of Science & Mathematics', /applied mathematics|biology|food technology|data science|computer science/i],
       ['School of Management', /agribusiness economics/i],
-      ['College of Humanities and Social Sciences', /architecture|anthropology|english|/i],
+      ['College of Humanities and Social Sciences', /architecture|anthropology|english|communication/i],
       ['Department of Human Kinetics', /sport science/i]
     ];
     if (/any field|all fields|regardless of (?:field|course)/i.test(elig)) d.fields = ['Any'];
@@ -1818,12 +1824,14 @@ function parseScholarshipText(text) {
   const g = flat.match(/(?:GWA|G\.W\.A\.?|general weighted average|weighted average|GPA)[^.\n]{0,80}?\b([1-5]\.\d{1,2})\b/i);
   if (g) d.maxGWA = Number(g[1]);
 
-  // Family income (converted to monthly when the PDF says annual)
+  // Family income. Limits in announcements are ANNUAL, and the app stores annual limits too.
   const inc = flat.match(/(?:family|household|parents?'?s?|gross)?[ \w]{0,20}income[^.\n]{0,100}?(?:PHP|Php|php|₱|P)\s?(\d{1,3}(?:,\d{3})+|\d+)/i);
   if (inc) {
-    let amount = Number(inc[1].replace(/,/g, ''));
-    if (/annual|yearly|per year|per annum/i.test(inc[0])) { amount = Math.round(amount / 12); notes.push('The income limit in the PDF is annual, so it was divided by 12 to get a monthly figure.'); }
-    d.maxIncome = amount;
+    d.maxIncome = Number(inc[1].replace(/,/g, ''));
+    if (/month/i.test(inc[0]) && !/annual|yearly|per year|per annum/i.test(inc[0])) {
+      d.maxIncome = d.maxIncome * 12;
+      notes.push('The income limit in the PDF is monthly, so it was multiplied by 12 to get the annual figure used by this app.');
+    }
   }
 
   // Other scholarships / assistance
@@ -1866,6 +1874,12 @@ function parseScholarshipText(text) {
   return { data: d, found: found, missing: missing, notes: notes };
 }
 
+
+/* =====================================================================
+   8B. SIGN-IN, ROLES AND ADMIN SCHOLARSHIP MANAGEMENT
+   WARNING: this passcode is visible to anyone who opens DevTools. It is acceptable for a local demo only.
+   Replace it with real authentication (e.g. Supabase Auth + row-level security) before using real student data.
+   ===================================================================== */
 
 const ADMIN_PASSCODE = 'admin123';
 
@@ -2054,10 +2068,10 @@ function setChecked(name, values) {
 function buildScholarshipFormChoices() {
   fillSelect('sch-type', TYPES, 'Select a type');
   $('sch-courses').innerHTML = checkGroupHTML('sch-course',
-    [{ value: 'Any', label: 'Any program' }].concat(COURSES.filter(function (c) { return c !== 'Other'; }).map(function (c) { return { value: c, label: c }; })));
+    [{ value: 'Any', label: 'Any program' }].concat(COURSES.map(function (c) { return { value: c, label: c }; })));
   $('sch-years').innerHTML = checkGroupHTML('sch-year', YEARS.map(function (y) { return { value: y, label: yearLabel(y) }; }));
   $('sch-fields').innerHTML = checkGroupHTML('sch-field',
-    [{ value: 'Any', label: 'Any field' }].concat(INTERESTS.filter(function (i) { return i !== 'Undecided / Other'; }).map(function (i) { return { value: i, label: i }; })));
+    [{ value: 'Any', label: 'Any field' }].concat(INTERESTS.map(function (i) { return { value: i, label: i }; })));
 }
 
 function showScholarshipForm(show) {
@@ -2119,6 +2133,7 @@ function openScholarshipForm(id, prefill, pendingFile, reviewHTML) {
   $('sch-link').value = d.link || '';
   $('sch-compliance').value = d.compliance.join('\n');
   $('sch-renewal').value = d.renewal;
+  showLogoPreview(d.logo || '');
 
   const note = $('sch-review-note');
   note.innerHTML = reviewHTML || '';
@@ -2174,6 +2189,7 @@ function validateScholarship(f, publish) {
     if (f.amountText === '' || isNaN(amount) || amount < 0) errors.push('Amount per release must be a number (0 or higher).');
     if (f.documents.length === 0) errors.push('List at least one required document (one per line).');
     if (!f.instructions) errors.push('Application instructions are required.');
+    if (!f.deadline) errors.push('Deadline is required.');
     else if (editingScholarshipId === null && daysUntil(f.deadline) < 0) errors.push('The deadline of a new scholarship cannot be in the past.');
   }
   if (f.gwaText !== '') {
@@ -2182,7 +2198,7 @@ function validateScholarship(f, publish) {
   }
   if (f.incomeText !== '') {
     const inc = Number(f.incomeText);
-    if (isNaN(inc) || inc < 0) errors.push('Maximum family income must be 0 or higher (or leave it blank).');
+    if (isNaN(inc) || inc < 0) errors.push('Maximum annual family income must be 0 or higher (or leave it blank).');
   }
   if (f.link && !/^https?:\/\/\S+$/i.test(f.link)) errors.push('The external link must start with http:// or https://');
 
@@ -2218,7 +2234,8 @@ async function saveScholarship(publish) {
     benefitAmount: f.amountText === '' ? 0 : Number(f.amountText),
     documents: f.documents, deadline: f.deadline, instructions: f.instructions, link: f.link,
     compliance: f.compliance, renewal: f.renewal || 'Not specified.',
-    published: publish || wasPublished
+    published: publish || wasPublished,
+    logo: schLogoData
   };
 
   const s = existing || Object.assign({ id: Date.now(), isSample: false, createdBy: currentUser.email }, data);
@@ -2355,10 +2372,11 @@ function renderManage() {
     const isPub = s.published !== false;
     const appCount = applications.filter(function (a) { return a.scholarshipId === s.id && a.status !== 'Draft'; }).length;
     return '<div class="card app-card">' +
-      '<div class="app-head"><div><div class="badges"><span class="badge badge-gray">' + esc(s.type || 'No type') + '</span>' +
-      (isPub ? '<span class="badge badge-green">Published</span>' : '<span class="badge badge-amber">Unpublished draft</span>') + '</div>' +
-      '<h4 class="sch-title">' + esc(s.name) + '</h4><div class="sch-provider">' + esc(s.provider) + '</div></div>' +
-      '<div>' + deadlineBadge(s.deadline) + '</div></div>' +
+      '<div class="app-head"><div>' +
+        '<div class="badges"><span class="badge badge-gray">' + esc(s.type || 'No type') + '</span>' +
+        (isPub ? '<span class="badge badge-green">Published</span>' : '<span class="badge badge-amber">Unpublished draft</span>') + '</div>' +
+        schHeadHTML(s) +
+      '</div><div>' + deadlineBadge(s.deadline) + '</div></div>' +
       '<div class="app-meta">' +
         '<div><span>Deadline</span>' + formatDate(s.deadline) + '</div>' +
         '<div><span>Benefits</span>' + esc(s.benefits || '-') + '</div>' +
@@ -2372,6 +2390,62 @@ function renderManage() {
         '<button class="btn btn-danger btn-small" data-action="sch-delete" data-id="' + s.id + '">Delete</button>' +
       '</div></div>';
   }).join('');
+}
+
+// ----- Admin: optional scholarship logo -----
+let schLogoData = '';          // logo of the open form, as a small data URL ('' = none)
+const LOGO_MAX_PX = 256;
+const LOGO_MAX_MB = 5;
+
+// Only renders images that are genuine PNG/JPEG data URLs
+function logoHtml(s) {
+  return s && s.logo && /^data:image\/(png|jpeg);base64,/.test(s.logo)
+    ? '<img class="sch-logo" src="' + s.logo + '" alt="">' : '';
+}
+
+// Logo + name + provider, used on cards
+function schHeadHTML(s) {
+  return '<div class="sch-head">' + logoHtml(s) + '<div><h4 class="sch-title">' + esc(s.name) +
+    '</h4><div class="sch-provider">' + esc(s.provider) + '</div></div></div>';
+}
+
+function showLogoPreview(dataUrl) {
+  schLogoData = dataUrl || '';
+  const prev = $('sch-logo-preview');
+  const rm = $('sch-logo-remove');
+  if (prev) {
+    if (schLogoData) prev.src = schLogoData; else prev.removeAttribute('src');   // src="" can make browsers re-request the page
+    prev.classList.toggle('hidden', !schLogoData);
+  }
+  if (rm) rm.classList.toggle('hidden', !schLogoData);
+}
+
+function handleLogoPicked(input) {
+  const file = input.files && input.files[0];
+  input.value = '';            // lets the same file be picked again later
+  if (!file) return;
+  if (!/^image\/(png|jpeg|webp)$/.test(file.type)) { showToast('Logo must be a PNG, JPG or WebP image.', 'error'); return; }
+  if (file.size > LOGO_MAX_MB * 1024 * 1024) { showToast('Logo is larger than ' + LOGO_MAX_MB + ' MB.', 'error'); return; }
+
+  const reader = new FileReader();
+  reader.onerror = function () { showToast('Could not read that image.', 'error'); };
+  reader.onload = function () {
+    const img = new Image();
+    img.onerror = function () { showToast('That file is not a valid image.', 'error'); };
+    img.onload = function () {
+      const scale = Math.min(1, LOGO_MAX_PX / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(img.width * scale));
+      c.height = Math.max(1, Math.round(img.height * scale));
+      const ctx = c.getContext('2d');
+      const jpeg = file.type === 'image/jpeg';
+      if (jpeg) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); }
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      showLogoPreview(c.toDataURL(jpeg ? 'image/jpeg' : 'image/png', 0.85));   // PNG keeps transparency
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
 }
 
 /* =====================================================================
@@ -2425,7 +2499,7 @@ function openAppReview(id) {
       '<div><span>Student number</span>' + esc(a.studentNumber || '-') + '</div>' +
       '<div><span>Course and year</span>' + esc((a.course || '-') + (a.yearLevel ? ', ' + yearLabel(a.yearLevel) : '')) + '</div>' +
       '<div><span>GWA</span>' + esc(a.gwa) + '</div>' +
-      '<div><span>Monthly family income</span>' + (a.income === '' ? '-' : peso(a.income)) + '</div>' +
+      '<div><span>Family income (as entered by the student)</span>' + (a.income === '' ? '-' : peso(a.income)) + '</div>' +
       '<div><span>Contact number</span>' + esc(a.contact || '-') + '</div>' +
       '<div><span>Date submitted</span>' + formatDate(a.dateSubmitted) + '</div>' +
     '</div>' +
@@ -2556,6 +2630,9 @@ document.addEventListener('click', function (e) {
   if (e.target.id === 'modal') { closeModal(); return; }
   if (e.target.id === 'preview-modal') { closePreview(); return; }
 
+  // "Remove logo" button in the scholarship form
+  if (e.target.closest('#sch-logo-remove')) { showLogoPreview(''); return; }
+
   const el = e.target.closest('[data-action]');
   if (!el) return;
   const action = el.dataset.action;
@@ -2607,6 +2684,7 @@ document.addEventListener('change', function (e) {
   const el = e.target;
   if (el.dataset.action === 'doc-upload') handleDocUpload(el);
   if (el.id === 'ann-file') handleAnnouncementPicked(el);
+  if (el.id === 'sch-logo') handleLogoPicked(el);   // scholarship logo file picker
   if (el.id === 'rv-status') $('rv-remark-box').classList.toggle('hidden', el.value !== 'Incomplete');
 });
 
@@ -2620,7 +2698,7 @@ async function startApp() {
   fillSelect('p-year', YEARS.map(function (y) { return { value: y, label: yearLabel(y) }; }), 'Select year level');
   fillSelect('p-aid', AID_OPTIONS);
   fillSelect('p-interest', INTERESTS, 'Select a College');
-  fillSelect('f-course', COURSES.filter(function (c) { return c !== 'Other'; }), 'All programs');
+  fillSelect('f-course', COURSES, 'All programs');
   fillSelect('f-year', YEARS.map(function (y) { return { value: y, label: yearLabel(y) }; }), 'All year levels');
   fillSelect('f-type', TYPES, 'All types');
   fillSelect('af-course', COURSES, 'Select your program');
