@@ -15,32 +15,55 @@
     <h1 class="brand-name">i<span>SKOLEKTIB</span></h1>
     <p class="login-sub">All Scholars, One Collective</p>
 
-    <h2 class="login-title">Sign in as</h2>
-    <div class="role-picker">
-      <button type="button" class="role-card selected" data-action="pick-role" data-role="student">
-        <strong>Student</strong><span>Discover, apply for, and track scholarships</span>
-      </button>
-      <button type="button" class="role-card" data-action="pick-role" data-role="admin">
-        <strong>Admin Staff</strong><span>Add and manage scholarship listings</span>
-      </button>
+    <div id="login-signin">
+      <h2 class="login-title">Sign in as</h2>
+      <div class="role-picker">
+        <button type="button" class="role-card selected" data-action="pick-role" data-role="student">
+          <strong>Student</strong><span>Discover, apply for, and track scholarships</span>
+        </button>
+        <button type="button" class="role-card" data-action="pick-role" data-role="admin">
+          <strong>Admin Staff</strong><span>Publish scholarships and review applications</span>
+        </button>
+      </div>
+
+      <form id="login-form" novalidate>
+        <div id="login-error" class="alert alert-error hidden"></div>
+        <div class="field">
+          <label for="login-email">UP Mail address *</label>
+          <input type="email" id="login-email" autocomplete="off" placeholder="name@up.edu.ph">
+          <small class="muted">Use your UP Mail address (ends with @up.edu.ph). No password is needed for students.</small>
+        </div>
+        <div class="field hidden" id="login-admin-fields">
+          <label for="login-pass">Staff passcode *</label>
+          <input type="password" id="login-pass" autocomplete="off">
+          <small class="muted">Demo passcode: <strong>admin123</strong></small>
+        </div>
+        <button type="submit" id="login-btn" class="btn btn-gold btn-block login-btn">Sign In</button>
+      </form>
     </div>
 
-    <form id="login-form" novalidate>
-      <div id="login-error" class="alert alert-error hidden"></div>
-      <div class="field">
-        <label for="login-name" id="login-name-label">Your name (optional)</label>
-        <input type="text" id="login-name" autocomplete="off" placeholder="e.g., Juan Dela Cruz">
-      </div>
-      <div class="field hidden" id="login-admin-fields">
-        <label for="login-pass">Staff passcode *</label>
-        <input type="password" id="login-pass" autocomplete="off">
-        <small class="muted">Demo passcode: <strong>admin123</strong></small>
-      </div>
-      <button type="submit" class="btn btn-gold btn-block login-btn">Sign In</button>
-    </form>
+    <div id="login-register" class="hidden">
+      <h2 class="login-title" id="reg-title">Create your profile</h2>
+      <p class="muted">First time here? Tell us a little about yourself. You will not be asked again.</p>
+      <form id="register-form" novalidate>
+        <div id="reg-error" class="alert alert-error hidden"></div>
+        <div class="field"><label for="reg-name">Full name *</label><input type="text" id="reg-name" placeholder="e.g., Juan Dela Cruz"></div>
+        <div class="field"><label for="reg-email">UP Mail address</label><input type="email" id="reg-email" readonly></div>
+        <div id="reg-student-fields">
+          <div class="field"><label for="reg-number">Student number (optional)</label><input type="text" id="reg-number" placeholder="e.g., 2023-12345"></div>
+          <div class="field"><label for="reg-course">Course / degree program *</label><select id="reg-course"></select></div>
+          <div class="field"><label for="reg-year">Year level *</label><select id="reg-year"></select></div>
+        </div>
+        <div id="reg-admin-fields" class="hidden">
+          <div class="field"><label for="reg-position">Staff position (optional)</label><input type="text" id="reg-position" placeholder="e.g., Scholarship Officer"></div>
+        </div>
+        <button type="submit" class="btn btn-gold btn-block login-btn">Create Account and Continue</button>
+        <button type="button" class="btn btn-ghost btn-block" data-action="reg-cancel">Back</button>
+      </form>
+    </div>
 
-    <p class="small-note dark">Prototype notice: this sign-in is a demonstration only. It runs entirely in your browser and is not secure.
-      Never enter a real password here.</p>
+    <p class="small-note dark">Prototype notice: this sign-in is a demonstration only and is not secure. It does not connect to Google or UP Mail. Never enter a real password here.</p>
+    <p class="small-note dark storage-note" id="storage-note"></p>
   </div>
 </div>
 
@@ -48,7 +71,6 @@
 
   <div class="backdrop" id="backdrop" data-action="toggle-menu"></div>
 
-  <!-- ================= SIDEBAR ================= -->
   <aside class="sidebar" id="sidebar">
     <div class="brand">
       <div class="brand-row">
@@ -62,7 +84,7 @@
 
     <nav class="nav" aria-label="Main navigation">
       <button class="nav-btn" data-action="goto" data-page="manage" data-roles="admin"><span class="nav-icon">&#128221;</span> Manage Scholarships</button>
-      <button class="nav-btn" data-action="goto" data-page="adminapps" data-roles="admin"><span class="nav-icon">&#128101;</span> Student Applications</button>
+      <button class="nav-btn" data-action="goto" data-page="studentapps" data-roles="admin"><span class="nav-icon">&#128101;</span> Student Applications</button>
       <button class="nav-btn active" data-action="goto" data-page="dashboard" data-roles="student"><span class="nav-icon">&#127968;</span> Dashboard</button>
       <button class="nav-btn" data-action="goto" data-page="matching" data-roles="student"><span class="nav-icon">&#127919;</span> Scholarship Matching</button>
       <button class="nav-btn" data-action="goto" data-page="marketplace" data-roles="student admin"><span class="nav-icon">&#128722;</span> Scholarship Marketplace</button>
@@ -72,8 +94,8 @@
 
     <div class="sidebar-footer">
       <button class="btn btn-outline-light btn-block" data-action="sign-out">Sign Out</button>
-      <button class="btn btn-outline-light btn-block" data-action="reset-data">Reset Demo Data</button>
-      <p class="small-note">Prototype Scholarship for MGT 101. All data is demonstration data stored only in this browser.</p>
+      <button class="btn btn-outline-light btn-block" data-action="reset-data" data-roles="admin">Reset Demo Data</button>
+      <p class="small-note">Prototype for MGT 101. All information is demonstration data. It is not connected to a real university database.</p>
     </div>
   </aside>
 
@@ -86,9 +108,11 @@
       <span class="student-chip" id="student-chip">No profile yet</span>
     </header>
 
+    <div id="db-banner" class="alert alert-error hidden db-banner"></div>
     <div class="demo-banner">
-      <strong>NOTICE:</strong> Scholarship listings are based on OSA's list of availble scholarships this year. This is a demonstration only and does not connect to any university or agency systems. All data is stored in this browser and will be lost if you clear your browser data.
-      Some information may not be reliable due to incomplete source of information. Please verify with the OSA for the actual and complete details regarding the scholarships.
+      <strong>NOTICE:</strong> Scholarship listings are based on emails sent by the Scholarship and Financial Assistance Section OSA UP Mindanao.
+      Some information may be incomplete or inaccurate. This is a demonstration only and does not connect to any real university database.
+      Nothing you do here is sent to UP Mindanao, any scholarship provider, or any government agency.
     </div>
 
     <main class="content">
@@ -99,24 +123,19 @@
         <!-- List of scholarship listings -->
         <div id="sch-list-view">
           <div class="page-head">
-            <p class="muted">Add and maintain scholarship listings. Changes are saved in this browser and appear in the student Marketplace and Matching pages.</p>
+            <p class="muted">Add and maintain scholarship listings. Published scholarships are saved in the shared database and appear in every student's Marketplace and Matching pages.</p>
             <button class="btn btn-gold" data-action="admin-new">+ Add Scholarship</button>
           </div>
-          <div class="card" id="ann-card">
+
+          <div class="card upload-card">
             <h3>Upload Scholarship Announcement</h3>
-            <p class="muted">Upload a scholarship announcement or memorandum (text-based PDF). The app reads the text and fills in the Add Scholarship form for you to review. Nothing is published until you confirm.</p>
-            <div id="ann-msg" class="alert hidden"></div>
-            <div class="toolbar">
-              <div class="field grow">
-                <label for="ann-file">Announcement PDF</label>
-                <input type="file" id="ann-file" accept=".pdf,application/pdf">
-              </div>
-              <div class="field">
-                <label>&nbsp;</label>
-                <button type="button" class="btn btn-gold" id="ann-extract" data-action="ann-extract" disabled>Extract Scholarship Information</button>
-              </div>
+            <p class="muted">Upload a scholarship announcement or memorandum (text-based PDF). The system reads it and fills in the Add Scholarship form for you to review. Nothing is published until you confirm.</p>
+            <div class="upload-row">
+              <label class="btn btn-secondary file-btn">Choose PDF<input type="file" id="ann-file" class="file-input" accept=".pdf,application/pdf"></label>
+              <span id="ann-filename" class="muted">No file chosen</span>
+              <button type="button" class="btn btn-gold" id="ann-extract-btn" data-action="extract" disabled>Extract Scholarship Information</button>
             </div>
-            <p class="muted small" id="ann-filename">No file chosen.</p>
+            <div id="ann-status" class="alert hidden"></div>
           </div>
           <div class="stats-grid" id="admin-stats"></div>
           <h3 class="section-title">All Listings</h3>
@@ -128,7 +147,7 @@
           <div class="card">
             <h3 id="sch-form-title">Add Scholarship</h3>
             <div id="sch-review-note" class="alert alert-warn hidden"></div>
-            <div id="sch-pdf-box" class="hidden"></div>
+            <div id="sch-pdf-box" class="pdf-box"></div>
             <div id="sch-errors" class="alert alert-error hidden"></div>
 
             <form id="sch-form" novalidate>
@@ -150,24 +169,20 @@
                   <input type="date" id="sch-deadline">
                 </div>
                 <div class="field full">
-                  <label for="sch-desc">Description: *</label>
+                  <label for="sch-desc">Description *</label>
                   <textarea id="sch-desc" rows="3"></textarea>
-                </div>
-                <div class="field full">
-                  <label for="sch-qualifications">Qualifications (one per line, optional)</label>
-                  <textarea id="sch-qualifications" rows="4" placeholder="Must be a bonafide UP Mindanao student&#10;Must be a Filipino citizen"></textarea>
                 </div>
 
                 <div class="field full">
-                  <label>Eligible programs: *</label>
+                  <label>Eligible programs *</label>
                   <div class="docs-box check-grid" id="sch-courses"></div>
                 </div>
                 <div class="field full">
-                  <label>Eligible year levels: *</label>
+                  <label>Eligible year levels *</label>
                   <div class="docs-box check-grid" id="sch-years"></div>
                 </div>
                 <div class="field full">
-                  <label>College:*</label>
+                  <label>Field of study / focus *</label>
                   <div class="docs-box check-grid" id="sch-fields"></div>
                 </div>
 
@@ -184,7 +199,7 @@
                 </div>
 
                 <div class="field">
-                  <label for="sch-benefits">Benefits:*</label>
+                  <label for="sch-benefits">Benefits (text shown to students) *</label>
                   <input type="text" id="sch-benefits" placeholder="e.g., PHP 15,000 per semester">
                 </div>
                 <div class="field">
@@ -214,7 +229,8 @@
               </div>
 
               <div class="form-actions">
-                <button type="button" class="btn btn-primary" id="sch-save-btn" data-action="sch-save">Publish Scholarship</button>
+                <button type="button" class="btn btn-primary" id="sch-publish-btn" data-action="sch-publish">Publish Scholarship</button>
+                <button type="button" class="btn btn-secondary" id="sch-draft-btn" data-action="sch-draft">Save as Unpublished Draft</button>
                 <button type="button" class="btn btn-ghost" data-action="sch-cancel">Cancel</button>
               </div>
             </form>
@@ -222,14 +238,20 @@
         </div>
       </section>
       <!-- ============ ADMIN: STUDENT APPLICATIONS ============ -->
-      <section id="page-adminapps" class="page">
-        <div class="page-head">
-          <p class="muted">Review submitted applications, check the uploaded documents, and update each status. Students see the new status in My Applications (same browser storage in this prototype).</p>
+      <section id="page-studentapps" class="page">
+        <div id="sa-list-view">
+          <div class="card">
+            <div class="toolbar">
+              <div class="field grow"><label for="sa-search">Search by student, email or scholarship</label><input type="search" id="sa-search" placeholder="Type to search..."></div>
+              <div class="field"><label for="sa-status">Status</label><select id="sa-status"></select></div>
+            </div>
+            <p class="muted" id="sa-count"></p>
+          </div>
+          <div id="sa-table"></div>
         </div>
-        <div class="card"><div class="table-wrap" id="adminapps-table"></div></div>
+        <div id="sa-detail-view" class="hidden"><div id="sa-detail"></div></div>
       </section>
 
-      <!-- ============ DASHBOARD ============ -->
       <section id="page-dashboard" class="page active">
         <div class="card welcome">
           <h3 id="welcome-title">Welcome, Iskx!</h3>
@@ -267,7 +289,7 @@
       <section id="page-matching" class="page">
         <div class="card">
           <h3>Student Profile</h3>
-          <p class="muted">Fill in your profile, then click "Find Matching Scholarships". Your profile is saved in this browser.</p>
+          <p class="muted">Fill in your profile, then click "Find Matching Scholarships". Your profile is saved to your account.</p>
           <div id="profile-errors" class="alert alert-error hidden"></div>
 
           <form id="profile-form" novalidate>
@@ -297,7 +319,7 @@
                 <select id="p-aid"></select>
               </div>
               <div class="field full">
-                <label for="p-interest">College *</label>
+                <label for="p-interest">Field of study or academic interest *</label>
                 <select id="p-interest"></select>
               </div>
             </div>
@@ -353,8 +375,9 @@
 
         <!-- List of applications -->
         <div id="app-list-view">
+          <div id="app-flash" class="alert alert-ok hidden"></div>
           <div class="page-head">
-            <p class="muted">Prototype only: submitting here does <strong>not</strong> send anything to a university, provider, or agency.</p>
+            <p class="muted">Prototype only: submitting here saves your application in the shared prototype database. It does <strong>not</strong> send anything to a real university, provider, or agency.</p>
             <button class="btn btn-gold" data-action="new-app">+ New Application</button>
           </div>
           <div id="app-list"></div>
@@ -379,8 +402,8 @@
                   <input type="text" id="af-name">
                 </div>
                 <div class="field">
-                  <label for="af-email">Email address *</label>
-                  <input type="email" id="af-email" placeholder="name@up.edu.ph">
+                  <label for="af-email">UP Mail address</label>
+                  <input type="email" id="af-email" readonly>
                 </div>
                 <div class="field">
                   <label for="af-contact">Contact number</label>
@@ -407,7 +430,7 @@
                   <textarea id="af-statement" rows="4" placeholder="Briefly explain why you need and deserve this scholarship."></textarea>
                 </div>
                 <div class="field full">
-                  <label>Required documents (upload PDF, JPG, JPEG or PNG, up to 5 MB each)</label>
+                  <label>Required documents * (upload a PDF, JPG, JPEG or PNG file, max 5 MB each)</label>
                   <div id="af-docs" class="docs-box"></div>
                 </div>
               </div>
@@ -454,11 +477,21 @@
   </div>
 </div>
 
+<!-- Pop-up used to preview uploaded files -->
+<div class="modal hidden preview-modal" id="preview-modal" role="dialog" aria-modal="true">
+  <div class="modal-box wide">
+    <button class="modal-close" data-action="close-preview" aria-label="Close">&times;</button>
+    <div id="preview-body"></div>
+  </div>
+</div>
+
 <!-- Small message that appears after actions -->
 <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
-<!-- PDF.js: reads text from the admin's scholarship PDF. Needs an internet connection the first time (see README). -->
+<!-- Libraries: PDF.js reads text from announcement PDFs; Supabase is the shared database -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
 <script src="script.js"></script>
 </body>
 </html>
