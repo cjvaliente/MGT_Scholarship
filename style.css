@@ -659,3 +659,25 @@ body.logged-out .app { display: none; }
   .upload-row .btn { width: 100%; }
   .db-banner { margin: 10px 14px 0; }
 }
+
+.approval-box {
+  background: #e8f7ee;
+  border: 1px solid #2e9e5b;
+  border-left: 4px solid #2e9e5b;
+  color: #14532d;
+  padding: 12px 14px;
+  border-radius: 8px;
+  margin-top: 10px;
+  font-weight: 600;
+}
+
+.rejection-box {
+  background: #fdecec;
+  border: 1px solid #d64545;
+  border-left: 4px solid #d64545;
+  color: #7a1f1f;
+  padding: 12px 14px;
+  border-radius: 8px;
+  margin-top: 10px;
+  font-weight: 600;
+}
