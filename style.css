@@ -614,39 +614,48 @@ body.logged-out .app { display: none; }
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 .login-logo { display: block; width: 96px; height: 96px; object-fit: contain; margin: 0 auto 6px; }
-
 /* =====================================================================
-   Uploads, PDF extraction, admin application review
+   ADDED FOR SHARED DATA, UPLOADS AND ADMIN REVIEW
    ===================================================================== */
-.small { font-size: 0.8rem; }
 .status-verified { background: var(--green-bg); color: var(--green); }
 .status-incomplete { background: var(--amber-bg); color: var(--amber); }
 
-.doc-block { border: 1px solid var(--border); border-radius: 8px; background: #fafbfe; padding: 6px 12px; }
-.doc-row { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--border); }
-.doc-row:last-of-type { border-bottom: none; }
-.doc-info { flex: 1 1 200px; min-width: 0; word-break: break-word; }
-.doc-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.doc-actions input[type="file"] { max-width: 230px; font-size: 0.8rem; }
+.role-email { font-size: 0.75rem; color: #a9b8d8; word-break: break-all; }
+.storage-note { font-weight: 600; }
+.storage-note.local { color: var(--red); }
+.db-banner { margin: 10px 20px 0; }
 
-.preview-area:empty { display: none; }
-.preview-area { margin: 8px 0; border: 1px solid var(--border); border-radius: 8px; background: #fff; padding: 8px; }
-.preview-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
-.preview-frame { width: 100%; height: 420px; border: 1px solid var(--border); border-radius: 6px; }
-.preview-img { max-width: 100%; max-height: 520px; display: block; margin: 0 auto; }
+/* Upload rows (student form, application cards, admin review) */
+.doc-list { display: flex; flex-direction: column; gap: 8px; }
+.doc-row {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: #fff;
+}
+.doc-main { flex: 1; min-width: 200px; }
+.doc-file { font-size: 0.8rem; color: var(--muted); word-break: break-all; margin-top: 2px; }
+.doc-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.file-btn { position: relative; cursor: pointer; overflow: hidden; }
+.file-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
 
-.lock-note { margin-top: 10px; }
+/* Admin upload box and PDF box */
+.upload-card { margin-bottom: 16px; }
+.upload-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 10px 0; }
+.pdf-box { margin-bottom: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.9rem; }
 
-.table-wrap { overflow-x: auto; }
-.table { width: 100%; border-collapse: collapse; font-size: 0.88rem; min-width: 720px; }
-.table th { text-align: left; color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.4px; padding: 8px 10px; border-bottom: 2px solid var(--border); }
-.table td { padding: 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
-.table tr:last-child td { border-bottom: none; }
+/* Tables */
+.table-wrap { overflow-x: auto; background: #fff; border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+.table { width: 100%; border-collapse: collapse; font-size: 0.88rem; min-width: 760px; }
+.table th, .table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.table th { background: var(--gray-bg); color: var(--navy); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.4px; }
 
-#page-manage textarea, #modal-body textarea { width: 100%; }
+/* File preview window (sits above the details window) */
+.preview-modal { z-index: 200; }
+.modal-box.wide { max-width: 900px; }
+.preview-frame { width: 100%; height: 70vh; border: 1px solid var(--border); border-radius: 8px; }
+.preview-img { max-width: 100%; max-height: 70vh; display: block; margin: 0 auto; border-radius: 8px; }
 
 @media (max-width: 600px) {
-  .doc-actions input[type="file"] { max-width: 100%; }
-  .preview-frame { height: 320px; }
-  .modal-box { padding: 18px 14px; }
+  .doc-actions { width: 100%; }
+  .upload-row .btn { width: 100%; }
+  .db-banner { margin: 10px 14px 0; }
 }
