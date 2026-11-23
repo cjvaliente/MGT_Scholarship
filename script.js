@@ -1877,11 +1877,10 @@ function parseScholarshipText(text) {
 
 /* =====================================================================
    8B. SIGN-IN, ROLES AND ADMIN SCHOLARSHIP MANAGEMENT
-   WARNING: this passcode is visible to anyone who opens DevTools. It is acceptable for a local demo only.
-   Replace it with real authentication (e.g. Supabase Auth + row-level security) before using real student data.
+   Cloud mode uses Supabase Auth: email + password, with the account verified by an emailed one-time code.
+   Admin rights are granted ONLY by the server (the claim_admin function in setup.sql), never by this file.
+   Local demo mode (no config.js keys) has no real security.
    ===================================================================== */
-
-const ADMIN_PASSCODE = 'admin123';
 
 const ROLE_PAGES = {
   student: ['dashboard', 'matching', 'marketplace', 'applications', 'tracking'],
@@ -1897,50 +1896,145 @@ function pageAllowed(name) { return !!session && ROLE_PAGES[session.role].includ
 function isUPMail(email) { return /^[^\s@]+@up\.edu\.ph$/i.test(email); }
 
 // ----- Sign-in screen -----
+let pendingEmail = '';          // the address waiting for its emailed code
+let resendTimer = null;
+
+function setBoxError(id, message) {
+  const box = $(id);
+  if (!message) { box.classList.add('hidden'); box.textContent = ''; return; }
+  box.textContent = message;
+  box.classList.remove('hidden');
+}
+function showLoginError(message) { setBoxError('login-error', message); }
+
+// Account type is chosen on the profile step (after the email is verified)
 function pickRole(role) {
   selectedRole = role;
   document.querySelectorAll('.role-card').forEach(function (b) {
     b.classList.toggle('selected', b.dataset.role === role);
   });
-  $('login-admin-fields').classList.toggle('hidden', role !== 'admin');
-  showLoginError('');
+  $('reg-student-fields').classList.toggle('hidden', role !== 'student');
+  $('reg-admin-fields').classList.toggle('hidden', role !== 'admin');
+  $('reg-title').textContent = 'Welcome! Create your ' + (role === 'admin' ? 'admin staff' : 'student') + ' profile';
 }
 
-function showLoginError(message) {
-  const box = $('login-error');
-  if (!message) { box.classList.add('hidden'); box.textContent = ''; return; }
-  box.textContent = message;
-  box.classList.remove('hidden');
+function showLoginStep(step) {   // 'signin', 'signup', 'otp' or 'register'
+  ['signin', 'signup', 'otp', 'register'].forEach(function (n) {
+    $('login-' + n).classList.toggle('hidden', step !== n);
+  });
 }
 
-function showLoginStep(step) {   // 'signin' or 'register'
-  $('login-signin').classList.toggle('hidden', step !== 'signin');
-  $('login-register').classList.toggle('hidden', step !== 'register');
+function startResendCooldown(seconds) {
+  const btn = $('otp-resend');
+  clearInterval(resendTimer);
+  let left = seconds;
+  btn.disabled = true;
+  btn.textContent = 'Resend code (' + left + 's)';
+  resendTimer = setInterval(function () {
+    left -= 1;
+    if (left <= 0) { clearInterval(resendTimer); btn.disabled = false; btn.textContent = 'Resend code'; }
+    else btn.textContent = 'Resend code (' + left + 's)';
+  }, 1000);
 }
 
+function openOtp(email) {
+  pendingEmail = email;
+  $('otp-email-text').textContent = email;
+  $('otp-code').value = '';
+  setBoxError('otp-error', '');
+  showLoginStep('otp');
+  startResendCooldown(60);
+}
+
+// ----- Sign in (email + password) -----
 async function handleSignIn() {
   const email = val('login-email').trim().toLowerCase();
+  const pass = val('login-pass');
   if (!isUPMail(email)) { showLoginError('Please enter your UP Mail address (it must end with @up.edu.ph).'); return; }
-  if (selectedRole === 'admin' && val('login-pass') !== ADMIN_PASSCODE) { showLoginError('Incorrect staff passcode.'); return; }
+  if (!pass) { showLoginError('Please enter your password.'); return; }
 
   showLoginError('');
   $('login-btn').disabled = true;
-  let user = null;
-  try { user = await store.get('users', email); }
-  catch (e) { showLoginError('Cannot reach the shared database: ' + (e.message || e)); $('login-btn').disabled = false; return; }
-  $('login-btn').disabled = false;
-
-  if (user) {
-    if (user.role !== selectedRole) {
-      showLoginError('This UP Mail is registered as ' + (user.role === 'admin' ? 'Admin Staff' : 'a Student') + '. Please choose the correct account type.');
-      return;
+  try {
+    if (sb) {
+      const res = await sb.auth.signInWithPassword({ email: email, password: pass });
+      if (res.error) {
+        if (/not confirmed/i.test(res.error.message)) {      // signed up but never entered the code
+          await sb.auth.resend({ type: 'signup', email: email });
+          openOtp(email);
+          setBoxError('otp-error', 'Your email is not verified yet. We sent you a new code.');
+        } else {
+          showLoginError('Incorrect UP Mail or password.');
+        }
+        return;
+      }
     }
-    await completeSignIn(user);
-  } else {
-    openRegistration(email);   // first login: ask for the basic profile
+    await finishAuthenticated(email);
+  } catch (e) {
+    showLoginError('Cannot reach the shared database: ' + (e.message || e));
+  } finally {
+    $('login-btn').disabled = false;
   }
 }
 
+// Called once the person is really signed in: load their profile or ask for one
+async function finishAuthenticated(email) {
+  const user = await store.get('users', email);
+  if (user) await completeSignIn(user);
+  else openRegistration(email);
+}
+
+// ----- Create account: password, then emailed code -----
+async function handleSignUp() {
+  const email = val('signup-email').trim().toLowerCase();
+  const pass = val('signup-pass');
+  if (!isUPMail(email)) { setBoxError('signup-error', 'Please enter your UP Mail address (it must end with @up.edu.ph).'); return; }
+  if (pass.length < 8) { setBoxError('signup-error', 'Your password must be at least 8 characters.'); return; }
+  if (pass !== val('signup-pass2')) { setBoxError('signup-error', 'The two passwords do not match.'); return; }
+  setBoxError('signup-error', '');
+
+  if (!sb) { openRegistration(email); return; }           // local demo mode: no email verification
+
+  $('signup-btn').disabled = true;
+  try {
+    const res = await sb.auth.signUp({ email: email, password: pass });
+    if (res.error) { setBoxError('signup-error', res.error.message); return; }
+    openOtp(email);      // same screen whether or not the email already exists (does not reveal accounts)
+  } catch (e) {
+    setBoxError('signup-error', 'Could not create the account: ' + (e.message || e));
+  } finally {
+    $('signup-btn').disabled = false;
+  }
+}
+
+async function handleVerifyOtp() {
+  const token = val('otp-code').replace(/\s/g, '');
+  if (!/^\d{6,10}$/.test(token)) { setBoxError('otp-error', 'Enter the numeric code from your email.'); return; }
+  setBoxError('otp-error', '');
+  $('otp-btn').disabled = true;
+  try {
+    const res = await sb.auth.verifyOtp({ email: pendingEmail, token: token, type: 'signup' });
+    if (res.error) { setBoxError('otp-error', 'That code is incorrect or has expired. You can request a new one.'); return; }
+    clearInterval(resendTimer);
+    await finishAuthenticated(pendingEmail);
+  } catch (e) {
+    setBoxError('otp-error', 'Could not verify the code: ' + (e.message || e));
+  } finally {
+    $('otp-btn').disabled = false;
+  }
+}
+
+async function handleResendOtp() {
+  startResendCooldown(60);
+  setBoxError('otp-error', '');
+  try {
+    const res = await sb.auth.resend({ type: 'signup', email: pendingEmail });
+    if (res.error) setBoxError('otp-error', res.error.message);
+    else showToast('A new code was sent.', 'info');
+  } catch (e) { setBoxError('otp-error', 'Could not resend the code: ' + (e.message || e)); }
+}
+
+// ----- Profile step (first sign-in only) -----
 function openRegistration(email) {
   registeringEmail = email;
   $('reg-email').value = email;
@@ -1949,22 +2043,37 @@ function openRegistration(email) {
   $('reg-course').value = '';
   $('reg-year').value = '';
   $('reg-position').value = '';
-  $('reg-student-fields').classList.toggle('hidden', selectedRole !== 'student');
-  $('reg-admin-fields').classList.toggle('hidden', selectedRole !== 'admin');
-  $('reg-title').textContent = 'Welcome! Create your ' + (selectedRole === 'admin' ? 'admin staff' : 'student') + ' profile';
+  $('reg-admincode').value = '';
+  pickRole('student');
   $('reg-error').classList.add('hidden');
   showLoginStep('register');
+}
+
+async function cancelRegistration() {
+  if (sb) await sb.auth.signOut();
+  showLoginStep('signin');
 }
 
 async function handleRegister() {
   const errors = [];
   const name = val('reg-name').trim();
+  const adminCode = val('reg-admincode').trim();
   if (!name) errors.push('Full name is required.');
   if (selectedRole === 'student') {
     if (!val('reg-course')) errors.push('Please select your course or degree program.');
     if (!val('reg-year')) errors.push('Please select your year level.');
   }
+  if (selectedRole === 'admin' && sb && !adminCode) errors.push('The admin registration code is required.');
   if (errors.length) { $('reg-error').textContent = errors.join(' '); $('reg-error').classList.remove('hidden'); return; }
+
+  // Admin rights are decided by the SERVER: it checks the code and records this email as an admin.
+  if (selectedRole === 'admin' && sb) {
+    const r = await sb.rpc('claim_admin', { code: adminCode });
+    const msg = r.error ? 'Could not check the admin code: ' + r.error.message
+      : r.data === 'locked' ? 'Too many incorrect attempts. Please try again later.'
+      : r.data !== 'ok' ? 'Incorrect admin registration code.' : '';
+    if (msg) { $('reg-error').textContent = msg; $('reg-error').classList.remove('hidden'); return; }
+  }
 
   const user = {
     id: registeringEmail, email: registeringEmail, fullName: name, role: selectedRole,
@@ -1975,11 +2084,11 @@ async function handleRegister() {
     position: selectedRole === 'admin' ? val('reg-position').trim() : ''
   };
   try {
-    await store.put('users', user, true);      // fails if this email already has an account
+    await store.put('users', user, true);      // fails if this email already has a profile
   } catch (e) {
     if (e.message === 'DUPLICATE') {
       showLoginStep('signin');
-      showLoginError('This UP Mail already has an account. Please sign in again.');
+      showLoginError('This UP Mail already has an account. Please sign in.');
     } else {
       $('reg-error').textContent = 'Could not save your account: ' + (e.message || e);
       $('reg-error').classList.remove('hidden');
@@ -1990,23 +2099,28 @@ async function handleRegister() {
 }
 
 async function completeSignIn(user, message) {
+  // The role always comes from the server (the admins table), never from the stored profile
+  if (sb) {
+    const r = await sb.rpc('is_admin');
+    user.role = (!r.error && r.data === true) ? 'admin' : 'student';
+  }
   currentUser = user;
   session = { role: user.role, name: user.fullName, email: user.email };
-  saveJSON(KEYS.session, { email: user.email });
+  if (!sb) saveJSON(KEYS.session, { email: user.email });   // local demo mode only
   profile = user.profile || null;
   matchingShown = false;
   $('matching-results').innerHTML = '';
   await refreshData();
   fillProfileForm();
-  $('login-email').value = '';
-  $('login-pass').value = '';
+  ['login-email', 'login-pass', 'signup-email', 'signup-pass', 'signup-pass2', 'otp-code'].forEach(function (id) { $(id).value = ''; });
   showLoginError('');
   showLoginStep('signin');
   showSessionScreen();
   showToast(message || ('Welcome back, ' + user.fullName + '!'));
 }
 
-function signOut() {
+async function signOut() {
+  if (sb) { try { await sb.auth.signOut(); } catch (e) { console.warn(e); } }
   session = null;
   currentUser = null;
   profile = null;
@@ -2661,7 +2775,11 @@ document.addEventListener('click', function (e) {
     case 'save-tracking': saveTracking(id, el.closest('.track-card')); break;
     // sign-in, accounts and admin
     case 'pick-role': pickRole(el.dataset.role); break;
-    case 'reg-cancel': showLoginStep('signin'); break;
+    case 'reg-cancel': cancelRegistration(); break;
+    case 'go-signup': showLoginError(''); showLoginStep('signup'); break;
+    case 'go-signin': setBoxError('signup-error', ''); showLoginStep('signin'); break;
+    case 'otp-resend': handleResendOtp(); break;
+    case 'otp-back': clearInterval(resendTimer); showLoginStep('signin'); break;
     case 'sign-out': signOut(); break;
     case 'admin-new': openScholarshipForm(); break;
     case 'admin-edit': closeModal(); showPage('manage'); openScholarshipForm(id); break;
@@ -2712,6 +2830,8 @@ async function startApp() {
   // Forms: do not let the Enter key reload the page
   $('login-form').addEventListener('submit', function (e) { e.preventDefault(); handleSignIn(); });
   $('register-form').addEventListener('submit', function (e) { e.preventDefault(); handleRegister(); });
+  $('signup-form').addEventListener('submit', function (e) { e.preventDefault(); handleSignUp(); });
+  $('otp-form').addEventListener('submit', function (e) { e.preventDefault(); handleVerifyOtp(); });
   $('sch-form').addEventListener('submit', function (e) { e.preventDefault(); });
   $('app-form').addEventListener('submit', function (e) { e.preventDefault(); });
   $('profile-form').addEventListener('submit', function (e) { e.preventDefault(); handleSaveProfile(); });
@@ -2740,14 +2860,20 @@ async function startApp() {
   showLoginStep('signin');
 
   // Restore the previous sign-in after a page refresh
-  const saved = loadJSON(KEYS.session, null);
-  if (saved && saved.email) {
-    try {
-      const user = await store.get('users', saved.email);
-      if (user) { await completeSignIn(user, 'Welcome back, ' + user.fullName + '!'); }
-      else saveJSON(KEYS.session, null);
-    } catch (e) { showLoginError('Cannot reach the shared database: ' + (e.message || e)); }
-  }
+  try {
+    if (sb) {
+      const cur = await sb.auth.getSession();
+      const em = cur.data && cur.data.session && cur.data.session.user && cur.data.session.user.email;
+      if (em) await finishAuthenticated(em.toLowerCase());
+    } else {
+      const saved = loadJSON(KEYS.session, null);
+      if (saved && saved.email) {
+        const user = await store.get('users', saved.email);
+        if (user) { await completeSignIn(user, 'Welcome back, ' + user.fullName + '!'); }
+        else saveJSON(KEYS.session, null);
+      }
+    }
+  } catch (e) { showLoginError('Cannot reach the shared database: ' + (e.message || e)); }
   showSessionScreen();
 
   // Check for changes made by other users every 20 seconds
