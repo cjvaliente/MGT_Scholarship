@@ -1997,7 +1997,7 @@ async function finishAuthenticated(email) {
   else openRegistration(email);
 }
 
-// ----- Create account: password, then emailed code -----
+// ----- Create account: continue directly or verify email, based on Supabase settings -----
 async function handleSignUp() {
   const email = val('signup-email').trim().toLowerCase();
   const pass = val('signup-pass');
@@ -2012,7 +2012,11 @@ async function handleSignUp() {
   try {
     const res = await sb.auth.signUp({ email: email, password: pass });
     if (res.error) { setBoxError('signup-error', formatAuthEmailError(res.error)); return; }
-    openOtp(email);      // same screen whether or not the email already exists (does not reveal accounts)
+    if (res.data.session) {
+      await finishAuthenticated(email);
+      return;
+    }
+    openOtp(email);
   } catch (e) {
     setBoxError('signup-error', 'Could not create the account: ' + formatAuthEmailError(e));
   } finally {
