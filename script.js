@@ -542,7 +542,8 @@ function saveJSON(key, value) {
    Files (announcement PDFs, student documents) go to one storage bucket.
    --------------------------------------------------------------------- */
 const CFG = window.ISKOLEKTIB_CONFIG || {};
-const sb = (CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY && window.supabase)
+// LOCAL_DEMO_MODE: true forces browser-only storage even when Supabase keys are filled in.
+const sb = (!CFG.LOCAL_DEMO_MODE && CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY && window.supabase)
   ? window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY) : null;
 const BUCKET = 'iskolektib-files';
 const LS_DB = 'iskolektib_db_';
@@ -1909,6 +1910,12 @@ function showLoginError(message) { setBoxError('login-error', message); }
 
 function formatAuthEmailError(error) {
   const message = error && error.message ? error.message : String(error || 'Unknown error');
+  if (/not authorized/i.test(message)) {
+    return 'Supabase is still using its built-in email sender, which only delivers to your project team members. Turn on custom SMTP in Supabase (Authentication > Emails > SMTP Settings). See SMTP-SETUP.md.';
+  }
+  if (/rate limit|too many|only request this once|after \d+ seconds/i.test(message)) {
+    return 'Too many emails were requested. Wait a minute, then use "Resend code". If this keeps happening, raise the email rate limit in Supabase (Authentication > Rate Limits). Details: ' + message;
+  }
   if ((error && error.status === 504) || /gateway timeout|request timeout/i.test(message)) {
     return message + ' Supabase Auth timed out while processing signup. Check Supabase Authentication logs and your SMTP provider logs; verify the SMTP host, port, credentials, sender authorization, and provider availability before retrying.';
   }
@@ -2012,6 +2019,13 @@ async function handleSignUp() {
   try {
     const res = await sb.auth.signUp({ email: email, password: pass });
     if (res.error) { setBoxError('signup-error', formatAuthEmailError(res.error)); return; }
+    // For an email that already has a confirmed account, Supabase answers "success" but sends NO email
+    // (it hides which emails exist). That user object has an empty identities list.
+    const u = res.data && res.data.user;
+    if (u && Array.isArray(u.identities) && u.identities.length === 0) {
+      setBoxError('signup-error', 'This email address already has an account, so no new code was sent. Go back and sign in instead.');
+      return;
+    }
     if (res.data.session) {
       await finishAuthenticated(email);
       return;
@@ -2025,6 +2039,7 @@ async function handleSignUp() {
 }
 
 async function handleVerifyOtp() {
+  if (!sb || !pendingEmail) { setBoxError('otp-error', 'Start again from "Create an account".'); return; }
   const token = val('otp-code').replace(/\s/g, '');
   if (!/^\d{6,10}$/.test(token)) { setBoxError('otp-error', 'Enter the numeric code from your email.'); return; }
   setBoxError('otp-error', '');
@@ -2042,6 +2057,7 @@ async function handleVerifyOtp() {
 }
 
 async function handleResendOtp() {
+  if (!sb || !pendingEmail) { setBoxError('otp-error', 'Start again from "Create an account".'); return; }
   startResendCooldown(60);
   setBoxError('otp-error', '');
   try {
@@ -2870,7 +2886,7 @@ async function startApp() {
 
   $('storage-note').textContent = sb
     ? ''
-    : 'LOCAL DEMO MODE: no cloud database is configured, so data is stored only in this browser and is NOT shared with other users. See README.';
+    : 'LOCAL DEMO MODE: data is stored only in this browser, is NOT shared with other users, no verification emails are sent, and passwords are NOT checked. Set LOCAL_DEMO_MODE to false in config.js for the shared database.';
   $('storage-note').classList.toggle('local', !sb);
 
   pickRole('student');
