@@ -1,7 +1,5 @@
--- iSKOLEKTIB database setup. Paste this whole file into Supabase > SQL Editor > Run.
--- Safe to re-run. Requires Supabase Auth (email + password). With "Confirm email" ON,
--- configure email delivery and users must enter the emailed code; with it OFF, Supabase
--- creates an authenticated session immediately and the app proceeds to profile setup.
+-- Optional shared-database setup. The current app configuration is local-only and does not use Supabase.
+-- If shared mode is restored, configure Supabase Auth and email verification before storing real user data.
 
 -- ---------------------------------------------------------------------
 -- 1. Tables
