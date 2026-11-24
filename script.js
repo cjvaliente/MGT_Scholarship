@@ -1893,7 +1893,7 @@ let registeringEmail = '';      // set while a first-time user fills in their pr
 function isAdmin() { return !!session && session.role === 'admin'; }
 function defaultPage() { return isAdmin() ? 'manage' : 'dashboard'; }
 function pageAllowed(name) { return !!session && ROLE_PAGES[session.role].includes(name); }
-function isUPMail(email) { return /^[^\s@]+@up\.edu\.ph$/i.test(email); }
+function isValidEmail(email) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email); }
 
 // ----- Sign-in screen -----
 let pendingEmail = '';          // the address waiting for its emailed code
@@ -1906,6 +1906,17 @@ function setBoxError(id, message) {
   box.classList.remove('hidden');
 }
 function showLoginError(message) { setBoxError('login-error', message); }
+
+function formatAuthEmailError(error) {
+  const message = error && error.message ? error.message : String(error || 'Unknown error');
+  if ((error && error.status === 504) || /gateway timeout|request timeout/i.test(message)) {
+    return message + ' Supabase Auth timed out while processing signup. Check Supabase Authentication logs and your SMTP provider logs; verify the SMTP host, port, credentials, sender authorization, and provider availability before retrying.';
+  }
+  if (/error sending confirmation email/i.test(message)) {
+    return message + ' Supabase Auth could not deliver the message. Check the Supabase Authentication logs for the SMTP rejection, then verify the SMTP host, port, credentials, and that the sender address/domain is authorized by your email provider.';
+  }
+  return message;
+}
 
 // Account type is chosen on the profile step (after the email is verified)
 function pickRole(role) {
@@ -1950,7 +1961,7 @@ function openOtp(email) {
 async function handleSignIn() {
   const email = val('login-email').trim().toLowerCase();
   const pass = val('login-pass');
-  if (!isUPMail(email)) { showLoginError('Please enter your UP Mail address (it must end with @up.edu.ph).'); return; }
+  if (!isValidEmail(email)) { showLoginError('Please enter a valid email address.'); return; }
   if (!pass) { showLoginError('Please enter your password.'); return; }
 
   showLoginError('');
@@ -1960,11 +1971,13 @@ async function handleSignIn() {
       const res = await sb.auth.signInWithPassword({ email: email, password: pass });
       if (res.error) {
         if (/not confirmed/i.test(res.error.message)) {      // signed up but never entered the code
-          await sb.auth.resend({ type: 'signup', email: email });
+          const resend = await sb.auth.resend({ type: 'signup', email: email });
           openOtp(email);
-          setBoxError('otp-error', 'Your email is not verified yet. We sent you a new code.');
+          setBoxError('otp-error', resend.error
+            ? 'Your email is not verified yet. Could not send a new code: ' + formatAuthEmailError(resend.error)
+            : 'Your email is not verified yet. We sent you a new code.');
         } else {
-          showLoginError('Incorrect UP Mail or password.');
+          showLoginError('Incorrect email or password.');
         }
         return;
       }
@@ -1988,7 +2001,7 @@ async function finishAuthenticated(email) {
 async function handleSignUp() {
   const email = val('signup-email').trim().toLowerCase();
   const pass = val('signup-pass');
-  if (!isUPMail(email)) { setBoxError('signup-error', 'Please enter your UP Mail address (it must end with @up.edu.ph).'); return; }
+  if (!isValidEmail(email)) { setBoxError('signup-error', 'Please enter a valid email address.'); return; }
   if (pass.length < 8) { setBoxError('signup-error', 'Your password must be at least 8 characters.'); return; }
   if (pass !== val('signup-pass2')) { setBoxError('signup-error', 'The two passwords do not match.'); return; }
   setBoxError('signup-error', '');
@@ -1998,10 +2011,10 @@ async function handleSignUp() {
   $('signup-btn').disabled = true;
   try {
     const res = await sb.auth.signUp({ email: email, password: pass });
-    if (res.error) { setBoxError('signup-error', res.error.message); return; }
+    if (res.error) { setBoxError('signup-error', formatAuthEmailError(res.error)); return; }
     openOtp(email);      // same screen whether or not the email already exists (does not reveal accounts)
   } catch (e) {
-    setBoxError('signup-error', 'Could not create the account: ' + (e.message || e));
+    setBoxError('signup-error', 'Could not create the account: ' + formatAuthEmailError(e));
   } finally {
     $('signup-btn').disabled = false;
   }
@@ -2029,9 +2042,9 @@ async function handleResendOtp() {
   setBoxError('otp-error', '');
   try {
     const res = await sb.auth.resend({ type: 'signup', email: pendingEmail });
-    if (res.error) setBoxError('otp-error', res.error.message);
+    if (res.error) setBoxError('otp-error', formatAuthEmailError(res.error));
     else showToast('A new code was sent.', 'info');
-  } catch (e) { setBoxError('otp-error', 'Could not resend the code: ' + (e.message || e)); }
+  } catch (e) { setBoxError('otp-error', 'Could not resend the code: ' + formatAuthEmailError(e)); }
 }
 
 // ----- Profile step (first sign-in only) -----
@@ -2088,7 +2101,7 @@ async function handleRegister() {
   } catch (e) {
     if (e.message === 'DUPLICATE') {
       showLoginStep('signin');
-      showLoginError('This UP Mail already has an account. Please sign in.');
+      showLoginError('This email address already has an account. Please sign in.');
     } else {
       $('reg-error').textContent = 'Could not save your account: ' + (e.message || e);
       $('reg-error').classList.remove('hidden');
@@ -2609,7 +2622,7 @@ function openAppReview(id) {
     '<div class="card"><div class="app-head"><div><h3>' + esc(a.scholarshipName) + '</h3><div class="sch-provider">Application #' + a.id + '</div></div>' + statusBadge(a.status) + '</div>' +
     '<div class="app-meta">' +
       '<div><span>Student name</span>' + esc(a.name) + '</div>' +
-      '<div><span>UP Mail</span>' + esc(a.studentEmail) + '</div>' +
+      '<div><span>Email address</span>' + esc(a.studentEmail) + '</div>' +
       '<div><span>Student number</span>' + esc(a.studentNumber || '-') + '</div>' +
       '<div><span>Course and year</span>' + esc((a.course || '-') + (a.yearLevel ? ', ' + yearLabel(a.yearLevel) : '')) + '</div>' +
       '<div><span>GWA</span>' + esc(a.gwa) + '</div>' +

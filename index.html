@@ -20,8 +20,8 @@
       <form id="login-form" novalidate>
         <div id="login-error" class="alert alert-error hidden"></div>
         <div class="field">
-          <label for="login-email">UP Mail address *</label>
-          <input type="email" id="login-email" autocomplete="username" placeholder="name@up.edu.ph">
+          <label for="login-email">Email address *</label>
+          <input type="email" id="login-email" autocomplete="username" placeholder="name@example.com">
         </div>
         <div class="field">
           <label for="login-pass">Password *</label>
@@ -37,8 +37,8 @@
       <form id="signup-form" novalidate>
         <div id="signup-error" class="alert alert-error hidden"></div>
         <div class="field">
-          <label for="signup-email">UP Mail address *</label>
-          <input type="email" id="signup-email" autocomplete="username" placeholder="name@up.edu.ph">
+          <label for="signup-email">Email address *</label>
+          <input type="email" id="signup-email" autocomplete="username" placeholder="name@example.com">
           <small class="muted">We will email you a verification code.</small>
         </div>
         <div class="field">
@@ -84,7 +84,7 @@
           </button>
         </div>
         <div class="field"><label for="reg-name">Full name *</label><input type="text" id="reg-name" placeholder="e.g., Juan Dela Cruz"></div>
-        <div class="field"><label for="reg-email">UP Mail address</label><input type="email" id="reg-email" readonly></div>
+        <div class="field"><label for="reg-email">Email address</label><input type="email" id="reg-email" readonly></div>
         <div id="reg-student-fields">
           <div class="field"><label for="reg-number">Student number (optional)</label><input type="text" id="reg-number" placeholder="e.g., 2023-12345"></div>
           <div class="field"><label for="reg-course">Course / degree program *</label><select id="reg-course"></select></div>
@@ -99,7 +99,7 @@
       </form>
     </div>
 
-    <p class="small-note dark">Notice: this is a demonstration prototype. Accounts are verified by a code sent to your UP Mail address. It is not an official UP system.</p>
+    <p class="small-note dark">Notice: this is a demonstration prototype. Accounts are verified by a code sent to your email address. It is not an official UP system.</p>
     <p class="small-note dark storage-note" id="storage-note"></p>
   </div>
 </div>
@@ -449,7 +449,7 @@
                   <input type="text" id="af-name">
                 </div>
                 <div class="field">
-                  <label for="af-email">UP Mail address</label>
+                  <label for="af-email">Email address</label>
                   <input type="email" id="af-email" readonly>
                 </div>
                 <div class="field">
@@ -539,6 +539,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="config.js"></script>
-<script src="script.js"></script>
+<script src="script.js?v=20261124"></script>
 </body>
 </html>

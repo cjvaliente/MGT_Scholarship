@@ -68,19 +68,10 @@ grant execute on function public.is_admin()        to authenticated;
 -- Remove an admin later:  delete from admins where email = 'someone@up.edu.ph';
 
 -- ---------------------------------------------------------------------
--- 3. Only @up.edu.ph addresses may create accounts (enforced on the server)
+-- 3. Remove the former @up.edu.ph signup restriction, if this setup was run before.
 -- ---------------------------------------------------------------------
-create or replace function public.enforce_up_mail() returns trigger
-language plpgsql as $$
-begin
-  if lower(new.email) !~ '^[^\s@]+@up\.edu\.ph$' then
-    raise exception 'Only @up.edu.ph addresses can register.';
-  end if;
-  return new;
-end $$;
 drop trigger if exists enforce_up_mail on auth.users;
-create trigger enforce_up_mail before insert on auth.users
-  for each row execute function public.enforce_up_mail();
+drop function if exists public.enforce_up_mail();
 
 -- ---------------------------------------------------------------------
 -- 4. Row-level security (replaces the old open "demo all" policies)
