@@ -2030,21 +2030,14 @@ async function handleSignIn() {
 
 // ----- Sign in with Google (OAuth) -----
 async function signInWithGoogle() {
-  if (!sb) {
-    showLoginError('Google sign-in requires Supabase cloud credentials in config.js.');
-    return;
-  }
-  showLoginError('');
-  const btn = $('google-btn');
-  if (btn) btn.disabled = true;
-
-  const { error } = await sb.auth.signInWithOAuth({
+  const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
       redirectTo: 'https://cjvaliente.github.io/MGT_Scholarship/'
     }
-  });
-
+  })
+  if (error) console.error(error)
+}
   if (error) {
     console.error(error);
     showLoginError('Google sign-in failed: ' + (error.message || error));
