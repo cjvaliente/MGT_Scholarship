@@ -2029,26 +2029,27 @@ async function handleSignIn() {
 }
 
 // ----- Sign in with Google (OAuth) -----
+// ----- Sign in with Google (OAuth) -----
 async function signInWithGoogle() {
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: 'https://cjvaliente.github.io/MGT_Scholarship/'
-    }
-  })
-
-  if (error) {
-    console.error('Google login error:', error.message)
-    alert(error.message)
+  if (!sb) {
+    showLoginError('Google sign-in needs the shared database. Fill in config.js (Supabase keys) and turn off LOCAL_DEMO_MODE.');
+    return;
   }
-}
-
-// Called once the person is really signed in: load their profile or ask for one
-async function finishAuthenticated(email) {
-  const user = await store.get('users', email);
-  if (user) await completeSignIn(user);
-  else openRegistration(email);
-}
+  showLoginError('');
+  try {
+    const res = await sb.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        // Return to whatever page this is running on (GitHub Pages or localhost)
+        redirectTo: window.location.origin + window.location.pathname,
+        queryParams: { prompt: 'select_account' }   // always let the user pick the Google account
+      }
+    });
+    if (res.error) showLoginError('Google sign-in failed: ' + res.error.message);
+    // On success the browser is redirected to Google, so nothing else runs here.
+  } catch (e) {
+    showLoginError('Google sign-in failed: ' + (e.message || e));
+  }
 
 // ----- Create account: continue directly or verify email, based on Supabase settings -----
 async function handleSignUp() {
