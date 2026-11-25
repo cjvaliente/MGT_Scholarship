@@ -2036,12 +2036,9 @@ async function signInWithGoogle() {
       redirectTo: 'https://cjvaliente.github.io/MGT_Scholarship/'
     }
   })
-  if (error) console.error(error)
-}
+
   if (error) {
-    console.error(error);
-    showLoginError('Google sign-in failed: ' + (error.message || error));
-    if (btn) btn.disabled = false;
+    console.error('Google login error:', error.message)
   }
 }
 
