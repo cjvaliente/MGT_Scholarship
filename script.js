@@ -542,7 +542,7 @@ function saveJSON(key, value) {
    Files (announcement PDFs, student documents) go to one storage bucket.
    --------------------------------------------------------------------- */
 const CFG = window.ISKOLEKTIB_CONFIG || {};
-const sb = (CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY && window.supabase)
+const sb = (!CFG.LOCAL_DEMO_MODE && CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY && window.supabase)
   ? window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY) : null;
 const BUCKET = 'iskolektib-files';
 const LS_DB = 'iskolektib_db_';
@@ -1877,7 +1877,7 @@ function parseScholarshipText(text) {
 
 /* =====================================================================
    8B. SIGN-IN, ROLES AND ADMIN SCHOLARSHIP MANAGEMENT
-   Cloud mode uses Supabase Auth: email + password, with the account verified by an emailed one-time code.
+   Cloud mode uses Supabase Auth: email + password (no email verification / OTP step).
    Admin rights are granted ONLY by the server (the claim_admin function in setup.sql), never by this file.
    Local demo mode (no config.js keys) has no real security.
    ===================================================================== */
@@ -1896,9 +1896,6 @@ function pageAllowed(name) { return !!session && ROLE_PAGES[session.role].includ
 function isValidEmail(email) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email); }
 
 // ----- Sign-in screen -----
-let pendingEmail = '';          // the address waiting for its emailed code
-let resendTimer = null;
-
 function setBoxError(id, message) {
   const box = $(id);
   if (!message) { box.classList.add('hidden'); box.textContent = ''; return; }
@@ -1907,18 +1904,7 @@ function setBoxError(id, message) {
 }
 function showLoginError(message) { setBoxError('login-error', message); }
 
-function formatAuthEmailError(error) {
-  const message = error && error.message ? error.message : String(error || 'Unknown error');
-  if ((error && error.status === 504) || /gateway timeout|request timeout/i.test(message)) {
-    return message + ' Supabase Auth timed out while processing signup. Check Supabase Authentication logs and your SMTP provider logs; verify the SMTP host, port, credentials, sender authorization, and provider availability before retrying.';
-  }
-  if (/error sending confirmation email/i.test(message)) {
-    return message + ' Supabase Auth could not deliver the message. Check the Supabase Authentication logs for the SMTP rejection, then verify the SMTP host, port, credentials, and that the sender address/domain is authorized by your email provider.';
-  }
-  return message;
-}
-
-// Account type is chosen on the profile step (after the email is verified)
+// Account type is chosen on the profile step (right after creating the account)
 function pickRole(role) {
   selectedRole = role;
   document.querySelectorAll('.role-card').forEach(function (b) {
@@ -1929,32 +1915,10 @@ function pickRole(role) {
   $('reg-title').textContent = 'Welcome! Create your ' + (role === 'admin' ? 'admin staff' : 'student') + ' profile';
 }
 
-function showLoginStep(step) {   // 'signin', 'signup', 'otp' or 'register'
-  ['signin', 'signup', 'otp', 'register'].forEach(function (n) {
+function showLoginStep(step) {   // 'signin', 'signup' or 'register'
+  ['signin', 'signup', 'register'].forEach(function (n) {
     $('login-' + n).classList.toggle('hidden', step !== n);
   });
-}
-
-function startResendCooldown(seconds) {
-  const btn = $('otp-resend');
-  clearInterval(resendTimer);
-  let left = seconds;
-  btn.disabled = true;
-  btn.textContent = 'Resend code (' + left + 's)';
-  resendTimer = setInterval(function () {
-    left -= 1;
-    if (left <= 0) { clearInterval(resendTimer); btn.disabled = false; btn.textContent = 'Resend code'; }
-    else btn.textContent = 'Resend code (' + left + 's)';
-  }, 1000);
-}
-
-function openOtp(email) {
-  pendingEmail = email;
-  $('otp-email-text').textContent = email;
-  $('otp-code').value = '';
-  setBoxError('otp-error', '');
-  showLoginStep('otp');
-  startResendCooldown(60);
 }
 
 // ----- Sign in (email + password) -----
@@ -1970,15 +1934,9 @@ async function handleSignIn() {
     if (sb) {
       const res = await sb.auth.signInWithPassword({ email: email, password: pass });
       if (res.error) {
-        if (/not confirmed/i.test(res.error.message)) {      // signed up but never entered the code
-          const resend = await sb.auth.resend({ type: 'signup', email: email });
-          openOtp(email);
-          setBoxError('otp-error', resend.error
-            ? 'Your email is not verified yet. Could not send a new code: ' + formatAuthEmailError(resend.error)
-            : 'Your email is not verified yet. We sent you a new code.');
-        } else {
-          showLoginError('Incorrect email or password.');
-        }
+        showLoginError(/not confirmed/i.test(res.error.message)
+          ? 'This account was created while email confirmation was still turned on in Supabase. Turn off "Confirm email" (Authentication > Providers > Email) and create the account again.'
+          : 'Incorrect email or password.');
         return;
       }
     }
@@ -1997,7 +1955,25 @@ async function finishAuthenticated(email) {
   else openRegistration(email);
 }
 
-// ----- Create account: continue directly or verify email, based on Supabase settings -----
+// ----- Sign in with Google (redirects to Google, then back to this page) -----
+async function signInWithGoogle() {
+  const onSignup = !$('login-signup').classList.contains('hidden');
+  const showErr = function (msg) { setBoxError(onSignup ? 'signup-error' : 'login-error', msg); };
+
+  if (!sb) { showErr('Google sign-in needs the shared database. Fill in config.js first.'); return; }
+  showErr('');
+  try {
+    const res = await sb.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin + window.location.pathname }
+    });
+    if (res.error) showErr('Could not start Google sign-in: ' + res.error.message);
+  } catch (e) {
+    showErr('Could not start Google sign-in: ' + (e.message || e));
+  }
+}
+
+// ----- Create account: no email verification; go straight to the profile step -----
 async function handleSignUp() {
   const email = val('signup-email').trim().toLowerCase();
   const pass = val('signup-pass');
@@ -2006,49 +1982,26 @@ async function handleSignUp() {
   if (pass !== val('signup-pass2')) { setBoxError('signup-error', 'The two passwords do not match.'); return; }
   setBoxError('signup-error', '');
 
-  if (!sb) { openRegistration(email); return; }           // local demo mode: no email verification
+  if (!sb) { openRegistration(email); return; }           // local demo mode: no account server
 
   $('signup-btn').disabled = true;
   try {
     const res = await sb.auth.signUp({ email: email, password: pass });
-    if (res.error) { setBoxError('signup-error', formatAuthEmailError(res.error)); return; }
-    if (res.data.session) {
-      await finishAuthenticated(email);
-      return;
+    if (res.error) { setBoxError('signup-error', res.error.message); return; }
+    if (!res.data.session) {
+      // Supabase still has "Confirm email" turned on, so no session was issued. Try signing in directly.
+      const login = await sb.auth.signInWithPassword({ email: email, password: pass });
+      if (login.error) {
+        setBoxError('signup-error', 'Supabase still requires email confirmation. Turn off "Confirm email" (Authentication > Providers > Email) and try again.');
+        return;
+      }
     }
-    openOtp(email);
+    await finishAuthenticated(email);
   } catch (e) {
-    setBoxError('signup-error', 'Could not create the account: ' + formatAuthEmailError(e));
+    setBoxError('signup-error', 'Could not create the account: ' + (e.message || e));
   } finally {
     $('signup-btn').disabled = false;
   }
-}
-
-async function handleVerifyOtp() {
-  const token = val('otp-code').replace(/\s/g, '');
-  if (!/^\d{6,10}$/.test(token)) { setBoxError('otp-error', 'Enter the numeric code from your email.'); return; }
-  setBoxError('otp-error', '');
-  $('otp-btn').disabled = true;
-  try {
-    const res = await sb.auth.verifyOtp({ email: pendingEmail, token: token, type: 'signup' });
-    if (res.error) { setBoxError('otp-error', 'That code is incorrect or has expired. You can request a new one.'); return; }
-    clearInterval(resendTimer);
-    await finishAuthenticated(pendingEmail);
-  } catch (e) {
-    setBoxError('otp-error', 'Could not verify the code: ' + (e.message || e));
-  } finally {
-    $('otp-btn').disabled = false;
-  }
-}
-
-async function handleResendOtp() {
-  startResendCooldown(60);
-  setBoxError('otp-error', '');
-  try {
-    const res = await sb.auth.resend({ type: 'signup', email: pendingEmail });
-    if (res.error) setBoxError('otp-error', formatAuthEmailError(res.error));
-    else showToast('A new code was sent.', 'info');
-  } catch (e) { setBoxError('otp-error', 'Could not resend the code: ' + formatAuthEmailError(e)); }
 }
 
 // ----- Profile step (first sign-in only) -----
@@ -2129,7 +2082,7 @@ async function completeSignIn(user, message) {
   $('matching-results').innerHTML = '';
   await refreshData();
   fillProfileForm();
-  ['login-email', 'login-pass', 'signup-email', 'signup-pass', 'signup-pass2', 'otp-code'].forEach(function (id) { $(id).value = ''; });
+  ['login-email', 'login-pass', 'signup-email', 'signup-pass', 'signup-pass2'].forEach(function (id) { $(id).value = ''; });
   showLoginError('');
   showLoginStep('signin');
   showSessionScreen();
@@ -2795,8 +2748,7 @@ document.addEventListener('click', function (e) {
     case 'reg-cancel': cancelRegistration(); break;
     case 'go-signup': showLoginError(''); showLoginStep('signup'); break;
     case 'go-signin': setBoxError('signup-error', ''); showLoginStep('signin'); break;
-    case 'otp-resend': handleResendOtp(); break;
-    case 'otp-back': clearInterval(resendTimer); showLoginStep('signin'); break;
+        case 'google-signin': signInWithGoogle(); break;
     case 'sign-out': signOut(); break;
     case 'admin-new': openScholarshipForm(); break;
     case 'admin-edit': closeModal(); showPage('manage'); openScholarshipForm(id); break;
@@ -2848,7 +2800,6 @@ async function startApp() {
   $('login-form').addEventListener('submit', function (e) { e.preventDefault(); handleSignIn(); });
   $('register-form').addEventListener('submit', function (e) { e.preventDefault(); handleRegister(); });
   $('signup-form').addEventListener('submit', function (e) { e.preventDefault(); handleSignUp(); });
-  $('otp-form').addEventListener('submit', function (e) { e.preventDefault(); handleVerifyOtp(); });
   $('sch-form').addEventListener('submit', function (e) { e.preventDefault(); });
   $('app-form').addEventListener('submit', function (e) { e.preventDefault(); });
   $('profile-form').addEventListener('submit', function (e) { e.preventDefault(); handleSaveProfile(); });

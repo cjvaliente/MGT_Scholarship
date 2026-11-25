@@ -1,5 +1,5 @@
 -- Optional shared-database setup. The current app configuration is local-only and does not use Supabase.
--- If shared mode is restored, configure Supabase Auth and email verification before storing real user data.
+-- If shared mode is restored, turn OFF "Confirm email" in Supabase (Authentication > Providers > Email) since the app has no OTP step.
 
 -- ---------------------------------------------------------------------
 -- 1. Tables
