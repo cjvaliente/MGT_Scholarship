@@ -542,6 +542,10 @@ function saveJSON(key, value) {
    Files (announcement PDFs, student documents) go to one storage bucket.
    --------------------------------------------------------------------- */
 const CFG = window.ISKOLEKTIB_CONFIG || {};
+<<<<<<< HEAD
+=======
+// LOCAL_DEMO_MODE: true forces browser-only storage even when Supabase keys are filled in.
+>>>>>>> 1af43442287c101ecdf0631164262046d0cc0455
 const sb = (!CFG.LOCAL_DEMO_MODE && CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY && window.supabase)
   ? window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY) : null;
 const BUCKET = 'iskolektib-files';
@@ -615,7 +619,7 @@ const store = {
   },
   async upload(path, file) {
     if (sb) {
-      const res = await sb.storage.from(BUCKET).upload(path, file, { upsert: true, contentType: file.type });
+      const res = await sb.storage.from(BUCKET).upload(path, file, { upsert: false, contentType: file.type || mimeOf(file.name) });
       if (res.error) throw res.error;
       return;
     }
@@ -634,10 +638,12 @@ const store = {
   async removeFiles(paths) {
     paths = paths.filter(Boolean);
     if (!paths.length) return;
-    try {
-      if (sb) { await sb.storage.from(BUCKET).remove(paths); return; }
-      for (const p of paths) await idbDo('readwrite', function (s) { return s.delete(p); });
-    } catch (e) { console.warn('Could not remove files', e); }
+    if (sb) {
+      const res = await sb.storage.from(BUCKET).remove(paths);
+      if (res.error) throw res.error;
+      return;
+    }
+    for (const p of paths) await idbDo('readwrite', function (s) { return s.delete(p); });
   }
 };
 
@@ -1058,6 +1064,7 @@ const LOCKED_MESSAGE = 'Your application has been successfully submitted. Your s
 
 let formDocs = [];        // the requirement rows of the open form: { name, file }
 let formAppId = null;     // id of the application being filled in (used in file paths)
+let formScholarshipId = null;
 let saving = false;
 
 // ----- File helpers (shared with the admin pages) -----
@@ -1177,6 +1184,7 @@ function renderFormDocs() {
 
 function setDocsFromScholarship() {
   const s = findScholarship(Number(val('af-scholarship')));
+  formScholarshipId = s ? s.id : null;
   formDocs = s ? s.documents.map(function (name) { return { name: name, file: null }; }) : [];
 }
 
@@ -1211,6 +1219,7 @@ function openEditForm(app) {
   if (!app || app.status !== 'Draft') { showToast('This application is locked and can no longer be edited.', 'error'); return; }
   editingAppId = app.id;
   formAppId = app.id;
+  formScholarshipId = app.scholarshipId;
   fillSelect('af-scholarship', [{ value: app.scholarshipId, label: app.scholarshipName || 'Scholarship' }]);
   $('af-scholarship').value = String(app.scholarshipId);
   $('af-scholarship').disabled = true;   // the scholarship of an existing application cannot be changed
@@ -1229,6 +1238,15 @@ function openEditForm(app) {
   showFormErrors([]);
   renderFormDocs();
   showAppForm(true);
+}
+
+async function cancelApplicationForm() {
+  if (editingAppId === null) {
+    try { await store.removeFiles(formDocs.map(function (d) { return d.file && d.file.path; })); }
+    catch (e) { showToast('Could not remove the unsaved files: ' + (e.message || e), 'error'); return; }
+  }
+  showAppForm(false);
+  editingAppId = null;
 }
 
 // Called by "Apply Now" buttons anywhere in the app
@@ -1289,12 +1307,28 @@ async function handleDocUpload(input) {
   const err = validateFile(file);
   if (err) { showToast(err, 'error'); return; }
   showToast('Uploading ' + file.name + '...', 'info');
-  const path = 'applications/' + formAppId + '/' + i + '-' + Date.now() + '-' + safeName(file.name);
+  const path = 'applications/' + currentUser.email + '/' + formAppId + '/' + i + '-' + Date.now() + '-' + safeName(file.name);
   try { await store.upload(path, file); }
   catch (e) { showToast('Upload failed: ' + (e.message || e), 'error'); return; }
+  const previousFile = formDocs[i].file;
   formDocs[i].file = { name: file.name, type: file.type || mimeOf(file.name), size: file.size, path: path };
   renderFormDocs();
+  if (previousFile && previousFile.path) {
+    try { await store.removeFiles([previousFile.path]); }
+    catch (e) { showToast('The new file was uploaded, but the previous copy could not be removed: ' + (e.message || e), 'error'); return; }
+  }
   showToast('"' + file.name + '" uploaded for ' + formDocs[i].name + '.');
+}
+
+async function removeAppDocument(index) {
+  const doc = formDocs[index];
+  if (!doc) return;
+  if (doc.file && doc.file.path) {
+    try { await store.removeFiles([doc.file.path]); }
+    catch (e) { showToast('Could not remove the uploaded file: ' + (e.message || e), 'error'); return; }
+  }
+  doc.file = null;
+  renderFormDocs();
 }
 
 // mode is 'draft' (save draft) or 'submit' (final submission, which locks the application)
@@ -1366,8 +1400,9 @@ async function deleteApplication(id) {
   if (!app) return;
   if (app.status !== 'Draft') { showToast('Submitted applications are locked and cannot be deleted.', 'error'); return; }
   if (!confirm('Delete your draft for "' + (app.scholarshipName || 'this scholarship') + '"? This cannot be undone.')) return;
+  try { await store.removeFiles(app.documents.map(function (d) { return d.file && d.file.path; })); }
+  catch (e) { showToast('Could not remove the draft files: ' + (e.message || e), 'error'); return; }
   if (!(await safe(store.del('applications', id), 'Could not delete the draft'))) return;
-  store.removeFiles(app.documents.map(function (d) { return d.file && d.file.path; }));
   applications = applications.filter(function (a) { return a.id !== id; });
   renderAll();
   showToast('Draft deleted.');
@@ -1904,7 +1939,28 @@ function setBoxError(id, message) {
 }
 function showLoginError(message) { setBoxError('login-error', message); }
 
+<<<<<<< HEAD
 // Account type is chosen on the profile step (right after creating the account)
+=======
+function formatAuthEmailError(error) {
+  const message = error && error.message ? error.message : String(error || 'Unknown error');
+  if (/not authorized/i.test(message)) {
+    return 'Supabase is still using its built-in email sender, which only delivers to your project team members. Turn on custom SMTP in Supabase (Authentication > Emails > SMTP Settings). See SMTP-SETUP.md.';
+  }
+  if (/rate limit|too many|only request this once|after \d+ seconds/i.test(message)) {
+    return 'Too many emails were requested. Wait a minute, then use "Resend code". If this keeps happening, raise the email rate limit in Supabase (Authentication > Rate Limits). Details: ' + message;
+  }
+  if ((error && error.status === 504) || /gateway timeout|request timeout/i.test(message)) {
+    return message + ' Supabase Auth timed out while processing signup. Check Supabase Authentication logs and your SMTP provider logs; verify the SMTP host, port, credentials, sender authorization, and provider availability before retrying.';
+  }
+  if (/error sending confirmation email/i.test(message)) {
+    return message + ' Supabase Auth could not deliver the message. Check the Supabase Authentication logs for the SMTP rejection, then verify the SMTP host, port, credentials, and that the sender address/domain is authorized by your email provider.';
+  }
+  return message;
+}
+
+// Account type is chosen on the profile step (after the email is verified)
+>>>>>>> 1af43442287c101ecdf0631164262046d0cc0455
 function pickRole(role) {
   selectedRole = role;
   document.querySelectorAll('.role-card').forEach(function (b) {
@@ -1948,12 +2004,28 @@ async function handleSignIn() {
   }
 }
 
-// Called once the person is really signed in: load their profile or ask for one
-async function finishAuthenticated(email) {
-  const user = await store.get('users', email);
-  if (user) await completeSignIn(user);
-  else openRegistration(email);
-}
+// ----- Sign in with Google (OAuth) -----
+// ----- Sign in with Google (OAuth) -----
+async function signInWithGoogle() {
+  if (!sb) {
+    showLoginError('Google sign-in needs the shared database. Fill in config.js (Supabase keys) and turn off LOCAL_DEMO_MODE.');
+    return;
+  }
+  showLoginError('');
+  try {
+    const res = await sb.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        // Return to whatever page this is running on (GitHub Pages or localhost)
+        redirectTo: window.location.origin + window.location.pathname,
+        queryParams: { prompt: 'select_account' }   // always let the user pick the Google account
+      }
+    });
+    if (res.error) showLoginError('Google sign-in failed: ' + res.error.message);
+    // On success the browser is redirected to Google, so nothing else runs here.
+  } catch (e) {
+    showLoginError('Google sign-in failed: ' + (e.message || e));
+  }
 
 // ----- Sign in with Google (redirects to Google, then back to this page) -----
 async function signInWithGoogle() {
@@ -1987,6 +2059,7 @@ async function handleSignUp() {
   $('signup-btn').disabled = true;
   try {
     const res = await sb.auth.signUp({ email: email, password: pass });
+<<<<<<< HEAD
     if (res.error) { setBoxError('signup-error', res.error.message); return; }
     if (!res.data.session) {
       // Supabase still has "Confirm email" turned on, so no session was issued. Try signing in directly.
@@ -1995,6 +2068,19 @@ async function handleSignUp() {
         setBoxError('signup-error', 'Supabase still requires email confirmation. Turn off "Confirm email" (Authentication > Providers > Email) and try again.');
         return;
       }
+=======
+    if (res.error) { setBoxError('signup-error', formatAuthEmailError(res.error)); return; }
+    // For an email that already has a confirmed account, Supabase answers "success" but sends NO email
+    // (it hides which emails exist). That user object has an empty identities list.
+    const u = res.data && res.data.user;
+    if (u && Array.isArray(u.identities) && u.identities.length === 0) {
+      setBoxError('signup-error', 'This email address already has an account, so no new code was sent. Go back and sign in instead.');
+      return;
+    }
+    if (res.data.session) {
+      await finishAuthenticated(email);
+      return;
+>>>>>>> 1af43442287c101ecdf0631164262046d0cc0455
     }
     await finishAuthenticated(email);
   } catch (e) {
@@ -2004,6 +2090,38 @@ async function handleSignUp() {
   }
 }
 
+<<<<<<< HEAD
+=======
+async function handleVerifyOtp() {
+  if (!sb || !pendingEmail) { setBoxError('otp-error', 'Start again from "Create an account".'); return; }
+  const token = val('otp-code').replace(/\s/g, '');
+  if (!/^\d{6,10}$/.test(token)) { setBoxError('otp-error', 'Enter the numeric code from your email.'); return; }
+  setBoxError('otp-error', '');
+  $('otp-btn').disabled = true;
+  try {
+    const res = await sb.auth.verifyOtp({ email: pendingEmail, token: token, type: 'signup' });
+    if (res.error) { setBoxError('otp-error', 'That code is incorrect or has expired. You can request a new one.'); return; }
+    clearInterval(resendTimer);
+    await finishAuthenticated(pendingEmail);
+  } catch (e) {
+    setBoxError('otp-error', 'Could not verify the code: ' + (e.message || e));
+  } finally {
+    $('otp-btn').disabled = false;
+  }
+}
+
+async function handleResendOtp() {
+  if (!sb || !pendingEmail) { setBoxError('otp-error', 'Start again from "Create an account".'); return; }
+  startResendCooldown(60);
+  setBoxError('otp-error', '');
+  try {
+    const res = await sb.auth.resend({ type: 'signup', email: pendingEmail });
+    if (res.error) setBoxError('otp-error', formatAuthEmailError(res.error));
+    else showToast('A new code was sent.', 'info');
+  } catch (e) { setBoxError('otp-error', 'Could not resend the code: ' + formatAuthEmailError(e)); }
+}
+
+>>>>>>> 1af43442287c101ecdf0631164262046d0cc0455
 // ----- Profile step (first sign-in only) -----
 function openRegistration(email) {
   registeringEmail = email;
@@ -2306,6 +2424,7 @@ async function saveScholarship(publish) {
 
   const existing = editingScholarshipId ? findScholarship(editingScholarshipId) : null;
   const wasPublished = !!existing && existing.published !== false;
+  const previousAnnouncementPath = existing && existing.announcement && existing.announcement.path;
   if (publish && !wasPublished && !confirm('Publish this scholarship? It will immediately appear in the Scholarship Marketplace and Matching page for ALL students.\n\nHave you verified the details against the original PDF?')) return;
 
   saving = true;
@@ -2339,13 +2458,18 @@ async function saveScholarship(publish) {
   saving = false;
   if (!ok) return;
   if (!existing) scholarships.push(s);
+  let cleanupError = '';
+  if (pendingAnnouncement && previousAnnouncementPath) {
+    try { await store.removeFiles([previousAnnouncementPath]); }
+    catch (e) { cleanupError = ' The previous announcement file could not be removed: ' + (e.message || e); }
+  }
 
   pendingAnnouncement = null;
   editingScholarshipId = null;
   clearAnnouncementPicker();
   renderAll();
   showScholarshipForm(false);
-  showToast(s.published ? 'Scholarship published. Students can now see it in the Marketplace.' : 'Scholarship saved as an unpublished draft.');
+  showToast((s.published ? 'Scholarship published. Students can now see it in the Marketplace.' : 'Scholarship saved as an unpublished draft.') + cleanupError, cleanupError ? 'error' : undefined);
 }
 
 async function toggleScholarship(id) {
@@ -2367,10 +2491,14 @@ async function deleteScholarship(id) {
   if (count > 0) { showToast('Cannot delete: ' + count + ' application' + (count === 1 ? '' : 's') + ' exist for this scholarship.', 'error'); return; }
   if (!confirm('Delete the scholarship "' + s.name + '"? This cannot be undone.')) return;
   if (!(await safe(store.del('scholarships', id), 'Could not delete the scholarship'))) return;
-  if (s.announcement) store.removeFiles([s.announcement.path]);
+  let cleanupError = '';
+  if (s.announcement) {
+    try { await store.removeFiles([s.announcement.path]); }
+    catch (e) { cleanupError = ' The announcement file could not be removed: ' + (e.message || e); }
+  }
   scholarships = scholarships.filter(function (x) { return x.id !== id; });
   renderAll();
-  showToast('Scholarship deleted.');
+  showToast('Scholarship deleted.' + cleanupError, cleanupError ? 'error' : undefined);
 }
 
 // ----- Admin: upload announcement PDF and extract -----
@@ -2709,6 +2837,12 @@ async function resetDemoData() {
    One listener on the whole page watches for clicks and calls the right function.
    ===================================================================== */
 
+/* =====================================================================
+   10. LISTENERS AND START-UP
+   Buttons that are created by JavaScript use a data-action attribute.
+   One listener on the whole page watches for clicks and calls the right function.
+   ===================================================================== */
+
 document.addEventListener('click', function (e) {
   // Click on the dark area outside a pop-up closes it
   if (e.target.id === 'modal') { closeModal(); return; }
@@ -2744,6 +2878,7 @@ document.addEventListener('click', function (e) {
     case 'view-announcement': previewStored(el); break;
     case 'save-tracking': saveTracking(id, el.closest('.track-card')); break;
     // sign-in, accounts and admin
+    case 'google-signin': signInWithGoogle(); break;
     case 'pick-role': pickRole(el.dataset.role); break;
     case 'reg-cancel': cancelRegistration(); break;
     case 'go-signup': showLoginError(''); showLoginStep('signup'); break;
@@ -2800,6 +2935,10 @@ async function startApp() {
   $('login-form').addEventListener('submit', function (e) { e.preventDefault(); handleSignIn(); });
   $('register-form').addEventListener('submit', function (e) { e.preventDefault(); handleRegister(); });
   $('signup-form').addEventListener('submit', function (e) { e.preventDefault(); handleSignUp(); });
+<<<<<<< HEAD
+=======
+  if ($('otp-form')) $('otp-form').addEventListener('submit', function (e) { e.preventDefault(); handleVerifyOtp(); });
+>>>>>>> 1af43442287c101ecdf0631164262046d0cc0455
   $('sch-form').addEventListener('submit', function (e) { e.preventDefault(); });
   $('app-form').addEventListener('submit', function (e) { e.preventDefault(); });
   $('profile-form').addEventListener('submit', function (e) { e.preventDefault(); handleSaveProfile(); });
@@ -2827,7 +2966,7 @@ async function startApp() {
   pickRole('student');
   showLoginStep('signin');
 
-  // Restore the previous sign-in after a page refresh
+  // Restore the previous sign-in after a page refresh or Google OAuth redirect
   try {
     if (sb) {
       const cur = await sb.auth.getSession();
@@ -2852,3 +2991,4 @@ async function startApp() {
 }
 
 startApp();
+

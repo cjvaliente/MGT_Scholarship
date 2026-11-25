@@ -1,5 +1,11 @@
+<<<<<<< HEAD
 -- Optional shared-database setup. The current app configuration is local-only and does not use Supabase.
 -- If shared mode is restored, turn OFF "Confirm email" in Supabase (Authentication > Providers > Email) since the app has no OTP step.
+=======
+-- Shared-database setup for iSKOLEKTIB (used when LOCAL_DEMO_MODE is false in config.js).
+-- Run this whole file once in the Supabase SQL Editor, then set the admin code (see section 2 below).
+-- Email verification codes also need Auth > Email settings and custom SMTP: see SMTP-SETUP.md.
+>>>>>>> 1af43442287c101ecdf0631164262046d0cc0455
 
 -- ---------------------------------------------------------------------
 -- 1. Tables
