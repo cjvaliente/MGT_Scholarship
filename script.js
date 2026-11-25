@@ -2039,6 +2039,7 @@ async function signInWithGoogle() {
 
   if (error) {
     console.error('Google login error:', error.message)
+    alert(error.message)
   }
 }
 
