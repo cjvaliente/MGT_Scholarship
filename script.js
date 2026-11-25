@@ -1951,20 +1951,13 @@ async function handleSignIn() {
 
 // ----- Sign in with Google (redirects to Google, then back to this page) -----
 async function signInWithGoogle() {
-  const onSignup = !$('login-signup').classList.contains('hidden');
-  const showErr = function (msg) { setBoxError(onSignup ? 'signup-error' : 'login-error', msg); };
-
-  if (!sb) { showErr('Google sign-in needs the shared database. Fill in config.js first.'); return; }
-  showErr('');
-  try {
-    const res = await sb.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: window.location.origin + window.location.pathname }
-    });
-    if (res.error) showErr('Could not start Google sign-in: ' + res.error.message);
-  } catch (e) {
-    showErr('Could not start Google sign-in: ' + (e.message || e));
-  }
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: 'https://cjvaliente.github.io/MGT_Scholarship/'
+    }
+  })
+  if (error) console.error(error)
 }
 
 // Called once the person is really signed in: load their profile or ask for one
