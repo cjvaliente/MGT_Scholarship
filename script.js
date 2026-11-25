@@ -1990,6 +1990,16 @@ async function handleSignIn() {
   }
 }
 
+async function signInWithGoogle() {
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: 'https://cjvaliente.github.io/MGT_Scholarship/'
+    }
+  })
+  if (error) console.error(error)
+}
+
 // Called once the person is really signed in: load their profile or ask for one
 async function finishAuthenticated(email) {
   const user = await store.get('users', email);
