@@ -1950,21 +1950,54 @@ async function handleSignIn() {
 }
 
 // ----- Sign in with Google (redirects to Google, then back to this page) -----
-async function signInWithGoogle() {
-  const onSignup = !$('login-signup').classList.contains('hidden');
-  const showErr = function (msg) { setBoxError(onSignup ? 'signup-error' : 'login-error', msg); };
+// The page address Google sends the person back to. It must also be listed in Supabase under
+// Authentication > URL Configuration > Redirect URLs (see the notes in config.js).
+function oauthRedirectUrl() {
+  return window.location.origin + window.location.pathname.replace(/index\.html$/, '');
+}
 
-  if (!sb) { showErr('Google sign-in needs the shared database. Check config.js.'); return; }
-  showErr('');
+async function signInWithGoogle() {
+  // Report the problem in whichever form is on screen (sign-in or sign-up)
+  const signupVisible = !$('login-signup').classList.contains('hidden');
+  const report = function (msg) { if (signupVisible) setBoxError('signup-error', msg); else showLoginError(msg); };
+  report('');
+
+  if (!sb) {
+    report(CFG.LOCAL_DEMO_MODE
+      ? 'Google sign-in is not available in local demo mode. Set LOCAL_DEMO_MODE to false in config.js.'
+      : 'Google sign-in could not start because the Supabase library did not load. Check your internet connection and reload the page.');
+    return;
+  }
+  if (window.location.protocol === 'file:') {
+    report('Google sign-in needs the app to be served over http(s). Open it from your GitHub Pages link or a local server instead of a file.');
+    return;
+  }
+
   try {
     const res = await sb.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin + window.location.pathname }
+      options: {
+        redirectTo: oauthRedirectUrl(),
+        queryParams: { prompt: 'select_account' }   // always let the person pick which Google account to use
+      }
     });
-    if (res.error) showErr('Could not start Google sign-in: ' + res.error.message);
+    if (res.error) report('Google sign-in failed: ' + res.error.message);
+    // On success the browser is already on its way to Google, so there is nothing more to do here.
   } catch (e) {
-    showErr('Could not start Google sign-in: ' + (e.message || e));
+    report('Google sign-in failed: ' + (e.message || e));
   }
+}
+
+// If Google or Supabase sent the person back with an error (for example "redirect_uri_mismatch"
+// or "access_denied"), show it on the sign-in screen and tidy the address bar.
+function showOAuthReturnError() {
+  const params = new URLSearchParams(window.location.search);
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const desc = params.get('error_description') || hash.get('error_description');
+  const code = params.get('error') || hash.get('error');
+  if (!desc && !code) return;
+  showLoginError('Google sign-in did not finish: ' + (desc || code).replace(/\+/g, ' '));
+  history.replaceState(null, '', window.location.pathname);
 }
 
 // Called once the person is really signed in: load their profile or ask for one
@@ -2827,6 +2860,7 @@ async function startApp() {
 
   pickRole('student');
   showLoginStep('signin');
+  showOAuthReturnError();
 
   // Restore the previous sign-in after a page refresh (this also picks up a return from Google sign-in)
   try {
